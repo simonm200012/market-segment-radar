@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+dist/
+.env
+.env.*
+
+# Generated poster/export assets that are not part of the app source.
+dezevnik_humon_*
+vector_preview/
+make_vector_poster.py

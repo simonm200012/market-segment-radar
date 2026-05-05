@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Investments</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="page-glow page-glow-left"></div>
+    <div class="page-glow page-glow-right"></div>
+    <main class="app-shell">
+      <nav class="top-nav">
+        <a class="nav-link" href="/">Radar</a>
+        <a class="nav-link active" href="/investments">Investments</a>
+      </nav>
+
+      <section class="hero investments-hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Trading 212 Portfolio</p>
+          <h1>Your positions, allocation, and live portfolio snapshot.</h1>
+          <p class="lede">
+            This page pulls your current Trading 212 account summary and open stock positions
+            through the local backend, so your API credentials stay out of the browser.
+          </p>
+          <div class="hero-strip" id="investments-strip"></div>
+        </div>
+        <div class="hero-controls">
+          <div class="control-group">
+            <label>Connection status</label>
+            <div id="connection-card" class="status-card">Loading Trading 212 data...</div>
+          </div>
+          <div class="hero-note">
+            <span class="note-dot"></span>
+            <p class="helper">
+              Uses the Trading 212 public API from your local server. Read-only portfolio view.
+            </p>
+          </div>
+          <button class="refresh-button" id="refresh-button" type="button">Refresh snapshot</button>
+        </div>
+      </section>
+
+      <section class="summary-grid" id="investments-summary"></section>
+
+      <section class="split-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Portfolio allocation</h2>
+            <p>Largest current positions by weight.</p>
+          </div>
+          <div id="allocation-list" class="allocation-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Profit and loss</h2>
+            <p>Which positions are doing the most work right now.</p>
+          </div>
+          <div id="pnl-list" class="allocation-list"></div>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Current holdings</h2>
+          <p>Live open positions from Trading 212.</p>
+        </div>
+        <div id="holdings-table" class="table-shell"></div>
+      </section>
+    </main>
+
+    <script src="/investments.js"></script>
+  </body>
+</html>

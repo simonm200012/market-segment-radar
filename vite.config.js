@@ -1,0 +1,16 @@
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+
+export default defineConfig({
+  base: "/customer-dashboard/",
+  plugins: [react()],
+  server: {
+    proxy: {
+      "/api": "http://127.0.0.1:8000",
+    },
+  },
+  build: {
+    outDir: "static/customer-dashboard",
+    emptyOutDir: true,
+  },
+});

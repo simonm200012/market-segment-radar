@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="980" viewBox="0 0 1500 980">
+  <defs>
+    <style>
+      .bg { fill: #f7f3ea; }
+      .panel { fill: #fffdf8; stroke: #d8cfbf; stroke-width: 2; rx: 24; }
+      .room-k { fill: #f4d9b1; fill-opacity: 0.85; stroke: #3b2d1f; stroke-width: 8; stroke-linejoin: round; }
+      .room-l { fill: #cfe3d6; fill-opacity: 0.9; stroke: #24382c; stroke-width: 8; stroke-linejoin: round; }
+      .opening { stroke: #ffffff; stroke-width: 12; stroke-linecap: round; }
+      .dim { stroke: #6e6659; stroke-width: 2; stroke-dasharray: 7 5; fill: none; }
+      .tick { stroke: #6e6659; stroke-width: 2; }
+      .label { font: 600 22px "Avenir Next", "Segoe UI", sans-serif; fill: #2d251d; }
+      .small { font: 500 17px "Avenir Next", "Segoe UI", sans-serif; fill: #4b4338; }
+      .tiny { font: 500 15px "Avenir Next", "Segoe UI", sans-serif; fill: #5d5548; }
+      .title { font: 700 34px "Avenir Next", "Segoe UI", sans-serif; fill: #201913; }
+      .sub { font: 500 20px "Avenir Next", "Segoe UI", sans-serif; fill: #62594e; }
+      .accent { fill: #8f4e22; }
+      .note { font: 500 16px "Avenir Next", "Segoe UI", sans-serif; fill: #51483d; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1500" height="980"/>
+  <rect class="panel" x="36" y="36" width="1428" height="908"/>
+
+  <text class="title" x="72" y="92">Kitchen + Living Room Best-Fit Floor Plan</text>
+  <text class="sub" x="72" y="124">Scaled from your notes and corrected so each room closes geometrically.</text>
+  <text class="note" x="72" y="152">Scale: 1 m = 100 px. Openings shown as white breaks in the wall line.</text>
+
+  <!-- Kitchen -->
+  <g transform="translate(90,230)">
+    <polygon class="room-k" points="0,0 254,0 254,227.5 276.5,227.5 276.5,0 563,0 563,79.5 523,79.5 523,224.5 563,224.5 563,537 0,537"/>
+
+    <!-- West doorway -->
+    <line class="opening" x1="0" y1="280" x2="0" y2="363"/>
+    <!-- East doorway -->
+    <line class="opening" x1="563" y1="222" x2="563" y2="308.5"/>
+
+    <text class="label" x="18" y="38">Kitchen</text>
+    <text class="small" x="18" y="68">Ceiling height: 2.10 m</text>
+
+    <!-- Dimensions -->
+    <line class="dim" x1="0" y1="-40" x2="563" y2="-40"/>
+    <line class="tick" x1="0" y1="-52" x2="0" y2="-28"/>
+    <line class="tick" x1="563" y1="-52" x2="563" y2="-28"/>
+    <text class="small" x="242" y="-50">5.63 m</text>
+
+    <line class="dim" x1="-40" y1="0" x2="-40" y2="537"/>
+    <line class="tick" x1="-52" y1="0" x2="-28" y2="0"/>
+    <line class="tick" x1="-52" y1="537" x2="-28" y2="537"/>
+    <text class="small" x="-86" y="278" transform="rotate(-90 -86,278)">5.37 m</text>
+
+    <text class="tiny" x="130" y="522">South wall: 1.64 + 0.915 + 3.08</text>
+    <text class="tiny" x="14" y="198" transform="rotate(-90 14,198)">West wall: 2.80 + 0.83 + 1.74</text>
+    <text class="tiny" x="304" y="22">North recess: 0.225 wide x 2.275 deep</text>
+    <text class="tiny" x="325" y="286">East notch: 0.40 deep x 1.45 tall</text>
+    <text class="tiny" x="388" y="315">East wall run: 2.22 + 0.865 + 0.04 + 1.45 + 0.795</text>
+  </g>
+
+  <!-- Living room -->
+  <g transform="translate(780,230)">
+    <polygon class="room-l" points="0,0 459,0 459,198.5 445,198.5 445,355 459,355 459,539 0,539"/>
+
+    <!-- West doorway -->
+    <line class="opening" x1="0" y1="221.5" x2="0" y2="308"/>
+    <!-- Balcony doors -->
+    <line class="opening" x1="445" y1="198.5" x2="445" y2="355"/>
+
+    <text class="label" x="18" y="38">Living room</text>
+    <text class="small" x="18" y="68">Ceiling height: 2.15 m</text>
+
+    <line class="dim" x1="0" y1="-40" x2="459" y2="-40"/>
+    <line class="tick" x1="0" y1="-52" x2="0" y2="-28"/>
+    <line class="tick" x1="459" y1="-52" x2="459" y2="-28"/>
+    <text class="small" x="191" y="-50">4.59 m</text>
+
+    <line class="dim" x1="-40" y1="0" x2="-40" y2="539"/>
+    <line class="tick" x1="-52" y1="0" x2="-28" y2="0"/>
+    <line class="tick" x1="-52" y1="539" x2="-28" y2="539"/>
+    <text class="small" x="-86" y="280" transform="rotate(-90 -86,280)">5.39 m</text>
+
+    <text class="tiny" x="118" y="522">North/South balanced width: 4.59 m</text>
+    <text class="tiny" x="16" y="173" transform="rotate(-90 16,173)">West wall: 2.215 + 0.865 + 2.31</text>
+    <text class="tiny" x="234" y="318">Balcony recess: 0.14 m deep</text>
+    <text class="tiny" x="226" y="347">East wall run: 1.84 + 1.565 + 1.985</text>
+  </g>
+
+  <!-- Notes -->
+  <g transform="translate(72,820)">
+    <text class="label accent" x="0" y="0">Corrections applied</text>
+    <text class="note" x="0" y="32">Kitchen: normalized to 5.63 m x 5.37 m. Adjusted the west remainder to 1.74 m, south remainder to 3.08 m,</text>
+    <text class="note" x="0" y="58">north end segment to 2.865 m, east top segment to 0.795 m, and matched the east return depth to 0.40 m.</text>
+    <text class="note" x="0" y="96">Living room: normalized to 4.59 m x 5.39 m. Balanced north/south wall lengths and aligned the west/east runs to the same depth.</text>
+    <text class="note" x="0" y="132">This is a best-fit reconstruction from handwritten dimensions, so the small corrections are geometric clean-up rather than a survey-grade redraw.</text>
+  </g>
+</svg>

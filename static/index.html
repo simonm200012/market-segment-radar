@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Market Segment Radar</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <div class="page-glow page-glow-left"></div>
+    <div class="page-glow page-glow-right"></div>
+    <main class="app-shell">
+      <nav class="top-nav">
+        <a class="nav-link active" href="/">Radar</a>
+        <a class="nav-link" href="/investments">Investments</a>
+      </nav>
+
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Market Segment Radar</p>
+          <h1>See where market strength is building and where weakness is spreading.</h1>
+          <p class="lede">
+            This dashboard turns market snapshots into a cleaner long and short research view,
+            with transparent signals, current pricing, and analyst context in one place.
+          </p>
+          <div class="hero-strip" id="hero-strip"></div>
+        </div>
+        <div class="hero-controls">
+          <div class="control-group">
+            <label for="strategy">Scoring profile</label>
+            <select id="strategy">
+              <option value="balanced">Balanced</option>
+              <option value="quality-long">Quality long</option>
+              <option value="aggressive-short">Aggressive short</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label for="source" class="source-label">Data source</label>
+            <select id="source">
+              <option value="auto">Auto</option>
+              <option value="live">Live Yahoo</option>
+              <option value="sample">Sample</option>
+            </select>
+          </div>
+          <div class="hero-note">
+            <span class="note-dot"></span>
+            <p class="helper">Research-oriented signal board. Scores are heuristic, not investment advice.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="summary-grid" id="summary-grid"></section>
+
+      <section class="panel source-panel">
+        <div class="panel-header">
+          <h2>Data source posture</h2>
+          <p>Prototype now, live feeds next.</p>
+        </div>
+        <div id="source-summary"></div>
+        <div id="warning-list" class="warning-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Segment rotation</h2>
+          <p>Which sectors look healthiest versus most fragile.</p>
+        </div>
+        <div class="table-shell" id="sector-table"></div>
+      </section>
+
+      <section class="split-grid">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Potential long ideas</h2>
+            <p>Highest long scores in the current profile.</p>
+          </div>
+          <div id="long-list" class="card-list"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Potential short ideas</h2>
+            <p>Weak names, with squeeze risk baked into the score.</p>
+          </div>
+          <div id="short-list" class="card-list"></div>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>Mixed names worth monitoring</h2>
+          <p>Low-conviction names where the signal is split.</p>
+        </div>
+        <div id="watch-list" class="card-list"></div>
+      </section>
+
+      <section class="panel disclaimer-panel">
+        <p id="disclaimer"></p>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

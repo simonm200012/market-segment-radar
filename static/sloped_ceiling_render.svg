@@ -1,0 +1,126 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1080" viewBox="0 0 1600 1080">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#f8f2e8"/>
+      <stop offset="100%" stop-color="#efe5d6"/>
+    </linearGradient>
+    <linearGradient id="kFloor" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#d8b486"/>
+      <stop offset="100%" stop-color="#b8824f"/>
+    </linearGradient>
+    <linearGradient id="lFloor" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#b7d1bf"/>
+      <stop offset="100%" stop-color="#73937d"/>
+    </linearGradient>
+    <linearGradient id="wallWarm" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#fffaf2"/>
+      <stop offset="100%" stop-color="#f1e4d0"/>
+    </linearGradient>
+    <linearGradient id="wallCool" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f8fcf8"/>
+      <stop offset="100%" stop-color="#dfebe1"/>
+    </linearGradient>
+    <style>
+      .title { font: 700 36px "Avenir Next", "Segoe UI", sans-serif; fill: #2d241b; }
+      .sub { font: 500 20px "Avenir Next", "Segoe UI", sans-serif; fill: #5f5549; }
+      .label { font: 700 28px "Avenir Next", "Segoe UI", sans-serif; fill: #2f281f; }
+      .small { font: 600 18px "Avenir Next", "Segoe UI", sans-serif; fill: #4d453c; }
+      .note { font: 500 17px "Avenir Next", "Segoe UI", sans-serif; fill: #5d5448; }
+      .tiny { font: 600 15px "Avenir Next", "Segoe UI", sans-serif; fill: #6e6254; }
+      .outline { stroke: #33281d; stroke-width: 3; fill: none; stroke-linejoin: round; }
+      .guide { stroke: #8c7e6c; stroke-width: 2; stroke-dasharray: 8 5; fill: none; }
+      .ridge { stroke: #8b4f21; stroke-width: 4; stroke-linecap: round; }
+      .shadow { fill: #000000; opacity: 0.08; }
+      .door { stroke: #ffffff; stroke-width: 8; stroke-linecap: round; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="1080" fill="url(#bg)"/>
+
+  <text class="title" x="70" y="82">Sloped Ceiling Render</text>
+  <text class="sub" x="70" y="116">Best-fit 3D cutaway based on your corrected floor plan and the wall heights you provided.</text>
+  <text class="note" x="70" y="148">Interpretation used: both rooms slope up from the lower north and south walls to the full height near the middle of each room.</text>
+
+  <!-- Kitchen shadow -->
+  <polygon class="shadow" points="121,770 629,770 726,834 219,834"/>
+  <!-- Kitchen floor -->
+  <polygon points="90,720 598,720 695,784 187,784" fill="url(#kFloor)" stroke="#35291f" stroke-width="3"/>
+
+  <!-- Kitchen south wall -->
+  <polygon points="90,720 598,720 598,575 90,575" fill="url(#wallWarm)" stroke="#35291f" stroke-width="3"/>
+  <!-- Kitchen north wall -->
+  <polygon points="187,784 695,784 695,644 187,644" fill="#ead9c2" stroke="#35291f" stroke-width="3"/>
+  <!-- Kitchen west wall -->
+  <polygon points="90,720 187,784 187,644 90,575" fill="#f3e5d3" stroke="#35291f" stroke-width="3"/>
+  <!-- Kitchen east wall -->
+  <polygon points="598,720 695,784 695,644 598,575" fill="#ead8c3" stroke="#35291f" stroke-width="3"/>
+
+  <!-- Kitchen ridge + ceiling slopes -->
+  <polygon points="90,575 598,575 646,493 138,493" fill="#f7efe2" stroke="#35291f" stroke-width="3"/>
+  <polygon points="187,644 695,644 646,493 138,493" fill="#f1e6d7" stroke="#35291f" stroke-width="3"/>
+  <line class="ridge" x1="138" y1="493" x2="646" y2="493"/>
+
+  <!-- Kitchen openings -->
+  <line class="door" x1="90" y1="666" x2="90" y2="591"/>
+  <line class="door" x1="598" y1="643" x2="598" y2="565"/>
+
+  <!-- Kitchen labels -->
+  <text class="label" x="120" y="420">Kitchen</text>
+  <text class="small" x="120" y="452">Overall size: 5.63 m x 5.37 m</text>
+  <text class="small" x="120" y="478">Ridge height: 2.10 m</text>
+  <text class="small" x="120" y="504">South wall: 1.45 m</text>
+  <text class="small" x="120" y="530">North wall: 1.40 m</text>
+  <text class="tiny" x="314" y="470">ceiling rises from both long sides</text>
+
+  <!-- Kitchen height guides -->
+  <line class="guide" x1="56" y1="720" x2="56" y2="575"/>
+  <line class="guide" x1="728" y1="784" x2="728" y2="644"/>
+  <line class="guide" x1="673" y1="644" x2="673" y2="493"/>
+  <text class="tiny" x="20" y="650" transform="rotate(-90 20,650)">1.45 m</text>
+  <text class="tiny" x="762" y="716" transform="rotate(-90 762,716)">1.40 m</text>
+  <text class="tiny" x="709" y="585" transform="rotate(-90 709,585)">2.10 m</text>
+
+  <!-- Living shadow -->
+  <polygon class="shadow" points="891,770 1305,770 1390,824 976,824"/>
+  <!-- Living floor -->
+  <polygon points="860,720 1274,720 1359,774 945,774" fill="url(#lFloor)" stroke="#29392d" stroke-width="3"/>
+
+  <!-- Living south wall -->
+  <polygon points="860,720 1274,720 1274,577 860,577" fill="url(#wallCool)" stroke="#29392d" stroke-width="3"/>
+  <!-- Living north wall -->
+  <polygon points="945,774 1359,774 1359,640 945,640" fill="#dce9df" stroke="#29392d" stroke-width="3"/>
+  <!-- Living west wall -->
+  <polygon points="860,720 945,774 945,640 860,577" fill="#edf5ed" stroke="#29392d" stroke-width="3"/>
+  <!-- Living east wall -->
+  <polygon points="1274,720 1359,774 1359,640 1274,577" fill="#dce8dd" stroke="#29392d" stroke-width="3"/>
+
+  <!-- Living ridge + ceiling slopes -->
+  <polygon points="860,577 1274,577 1316,486 902,486" fill="#eff7ef" stroke="#29392d" stroke-width="3"/>
+  <polygon points="945,640 1359,640 1316,486 902,486" fill="#e6f0e7" stroke="#29392d" stroke-width="3"/>
+  <line class="ridge" x1="902" y1="486" x2="1316" y2="486"/>
+
+  <!-- Living openings -->
+  <line class="door" x1="860" y1="664" x2="860" y2="590"/>
+  <line class="door" x1="1274" y1="637" x2="1274" y2="497"/>
+
+  <!-- Living labels -->
+  <text class="label" x="886" y="420">Living room</text>
+  <text class="small" x="886" y="452">Overall size: 4.59 m x 5.39 m</text>
+  <text class="small" x="886" y="478">Ridge height: 2.15 m</text>
+  <text class="small" x="886" y="504">South wall: 1.43 m</text>
+  <text class="small" x="886" y="530">North wall: 1.34 m</text>
+  <text class="tiny" x="1048" y="463">balcony side kept on the east wall</text>
+
+  <!-- Living height guides -->
+  <line class="guide" x1="828" y1="720" x2="828" y2="577"/>
+  <line class="guide" x1="1392" y1="774" x2="1392" y2="640"/>
+  <line class="guide" x1="1342" y1="640" x2="1342" y2="486"/>
+  <text class="tiny" x="792" y="651" transform="rotate(-90 792,651)">1.43 m</text>
+  <text class="tiny" x="1426" y="715" transform="rotate(-90 1426,715)">1.34 m</text>
+  <text class="tiny" x="1378" y="584" transform="rotate(-90 1378,584)">2.15 m</text>
+
+  <!-- bottom notes -->
+  <text class="note" x="70" y="930">What this render means: the short wall heights are treated as knee walls, and the ceiling planes rise inward to the tallest line through the middle.</text>
+  <text class="note" x="70" y="962">If you want, the next step can be a more realistic interior render with windows, doors, cabinetry, sofa placement, and a stronger 3D camera angle.</text>
+  <text class="note" x="70" y="994">File: static/sloped_ceiling_render.svg</text>
+</svg>
