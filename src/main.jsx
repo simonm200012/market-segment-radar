@@ -1,354 +1,632 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./customerDashboard.css";
 
-const number = (value) => Number(value || 0);
-const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
-const integer = new Intl.NumberFormat("en", { maximumFractionDigits: 0 });
-const money = new Intl.NumberFormat("en", {
-  style: "currency",
-  currency: "EUR",
-  maximumFractionDigits: 0,
-});
-const moneyExact = new Intl.NumberFormat("en", {
-  style: "currency",
-  currency: "EUR",
-  maximumFractionDigits: 2,
-});
+const currency = new Intl.NumberFormat("sl-SI", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
+const currencyExact = new Intl.NumberFormat("sl-SI", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
+const integer = new Intl.NumberFormat("sl-SI", { maximumFractionDigits: 0 });
+const decimal = new Intl.NumberFormat("sl-SI", { maximumFractionDigits: 2 });
+const today = "2026-05-23";
+const storageKey = "garage-ledger-v2";
+const syncConfig = {
+  url: import.meta.env.VITE_SUPABASE_URL || "",
+  anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || "",
+  id: import.meta.env.VITE_GARAGE_SYNC_ID || "default-garage",
+};
+const categories = ["Service", "Fuel", "Charge", "Insurance", "Registration", "Tires", "Repairs", "Parking", "Loan", "Other"];
+const views = ["Records", "Costs", "Timeline", "Sell", "Garage"];
 
-function pct(part, whole) {
-  return whole ? `${((part / whole) * 100).toFixed(1)}%` : "0%";
+const servicePlan = [
+  { km: 30000, label: "Oil and cabin filters" },
+  { km: 60000, label: "Brake fluid, DSG/Haldex check" },
+  { km: 90000, label: "Major service window" },
+  { km: 120000, label: "Spark plugs, belts, suspension check" },
+  { km: 150000, label: "Long-term ownership inspection" },
+];
+
+const seedVehicle = {
+  id: "formentor",
+  name: "2022 Cupra Formentor VZ",
+  purchaseDate: "2023-04-15",
+  purchasePrice: 36500,
+  currentKilometers: 68980,
+  purchaseKilometers: 18990,
+  estimatedValue: 25500,
+  targetSellKilometers: 132000,
+  annualKilometers: 22500,
+  maintenanceReserve: 1800,
+  records: [
+    { id: 1, type: "Service", vendor: "Porsche Inter Auto", date: "2026-04-10", amount: 642, odometer: 67882, liters: "", notes: "Oil, filters, inspection", fileName: "service_2026_04.pdf" },
+    { id: 2, type: "Fuel", vendor: "Petrol", date: "2026-05-14", amount: 76.42, odometer: 68835, liters: 56.4, notes: "Premium fuel", fileName: "petrol_receipt.jpg" },
+    { id: 8, type: "Charge", vendor: "Ionity", date: "2026-05-18", amount: 18.9, odometer: 68920, liters: "", kwh: 31.5, notes: "Fast charge", fileName: "ionity_receipt.pdf" },
+    { id: 3, type: "Insurance", vendor: "Zavarovalnica", date: "2026-01-02", amount: 1280, odometer: 61493, liters: "", notes: "Annual premium", fileName: "policy_renewal.pdf" },
+    { id: 4, type: "Registration", vendor: "Upravna enota", date: "2025-11-21", amount: 218, odometer: 58741, liters: "", notes: "Annual registration", fileName: "registration.pdf" },
+    { id: 5, type: "Tires", vendor: "Gume servis", date: "2025-09-03", amount: 914, odometer: 54107, liters: "", notes: "All-season set", fileName: "tires.pdf" },
+    { id: 6, type: "Fuel", vendor: "OMV", date: "2026-04-30", amount: 71.1, odometer: 68252, liters: 53.8, notes: "Road trip", fileName: "omv.png" },
+    { id: 7, type: "Repairs", vendor: "Independent shop", date: "2025-12-12", amount: 486, odometer: 60741, liters: "", notes: "Brake pads", fileName: "brakes.pdf" },
+  ],
+  recurring: [
+    { id: "insurance", name: "Insurance", cadence: "Annual", nextDue: "2027-01-02", amount: 1280 },
+    { id: "registration", name: "Registration", cadence: "Annual", nextDue: "2026-11-21", amount: 218 },
+    { id: "tires", name: "Tyre reserve", cadence: "Annual", nextDue: "2026-09-03", amount: 450 },
+    { id: "parking", name: "Parking", cadence: "Monthly", nextDue: "2026-06-01", amount: 85 },
+  ],
+  reviewQueue: [],
+};
+
+const seedGarage = {
+  activeVehicleId: seedVehicle.id,
+  vehicles: [
+    seedVehicle,
+    {
+      ...seedVehicle,
+      id: "golf",
+      name: "2018 VW Golf 1.5 TSI",
+      purchaseDate: "2022-08-10",
+      purchasePrice: 16200,
+      currentKilometers: 118400,
+      purchaseKilometers: 82500,
+      estimatedValue: 11200,
+      targetSellKilometers: 165000,
+      annualKilometers: 16000,
+      maintenanceReserve: 1200,
+      records: [],
+      recurring: [
+        { id: "insurance-golf", name: "Insurance", cadence: "Annual", nextDue: "2026-10-12", amount: 740 },
+        { id: "registration-golf", name: "Registration", cadence: "Annual", nextDue: "2026-08-20", amount: 185 },
+      ],
+      reviewQueue: [],
+    },
+  ],
+};
+
+function toNumber(value) {
+  return Number.parseFloat(value) || 0;
 }
 
-function maxOf(rows, key) {
-  return Math.max(...rows.map((row) => number(row[key])), 1);
+function formatKm(value) {
+  return `${integer.format(value)} km`;
 }
 
-function BarList({ rows, labelKey, valueKey, valueFormat = compact.format, subFormat }) {
-  const max = maxOf(rows, valueKey);
+function monthsBetween(start, end = today) {
+  const a = new Date(start);
+  const b = new Date(end);
+  return Math.max((b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth() + (b.getDate() - a.getDate()) / 30, 1);
+}
+
+function normalizeDate(raw) {
+  const value = raw.replaceAll("/", "-");
+  if (/^20\d{2}-/.test(value)) return value.split("-").map((part, index) => (index ? part.padStart(2, "0") : part)).join("-");
+  const [month, day, year] = value.split("-");
+  return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+}
+
+function addMonths(date, count) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + count);
+  return next.toISOString().slice(0, 10);
+}
+
+function parseUploadedText(text, fileName) {
+  const lower = `${fileName} ${text}`.toLowerCase();
+  const amountMatch = text.match(/(?:total|amount|paid|premium|due|skupaj|znesek)?\s*(?:€|eur)?\s*([0-9]{1,5}(?:[.,][0-9]{2})?)/i);
+  const odometerMatch = text.match(/(?:odometer|mileage|kilometers|kilometres|km)\D{0,12}([0-9]{2,7})/i);
+  const litersMatch = text.match(/(?:liters|litres|liter|litre|l)\D{0,8}([0-9]{1,3}(?:[.,]\d+)?)/i);
+  const kwhMatch = text.match(/(?:kwh|kw h|kilowatt)\D{0,8}([0-9]{1,3}(?:[.,]\d+)?)/i);
+  const dateMatch = text.match(/(20\d{2}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]20\d{2})/);
+  let type = "Other";
+  if (/charge|charging|charger|ionity|tesla|supercharger|electr|kwh|kw h/.test(lower)) type = "Charge";
+  else if (/gas|fuel|petrol|omv|shell|chevron|exxon|bp|liter|litre/.test(lower)) type = "Fuel";
+  else if (/insurance|policy|premium|zavar/.test(lower)) type = "Insurance";
+  else if (/registration|dmv|tag|plate|registr/.test(lower)) type = "Registration";
+  else if (/tire|tyre|wheel|gume/.test(lower)) type = "Tires";
+  else if (/repair|brake|battery|alternator/.test(lower)) type = "Repairs";
+  else if (/service|oil|filter|inspection|dealer|servis/.test(lower)) type = "Service";
+
+  const fields = [amountMatch, odometerMatch, litersMatch, kwhMatch, dateMatch].filter(Boolean).length;
+  return {
+    id: Date.now() + Math.random(),
+    type,
+    vendor: fileName.replace(/\.[^.]+$/, "").replace(/[_-]/g, " ").slice(0, 32) || "Uploaded record",
+    date: dateMatch ? normalizeDate(dateMatch[1]) : today,
+    amount: amountMatch ? amountMatch[1].replace(",", ".") : "",
+    odometer: odometerMatch ? odometerMatch[1] : "",
+    liters: litersMatch ? litersMatch[1].replace(",", ".") : "",
+    kwh: kwhMatch ? kwhMatch[1].replace(",", ".") : "",
+    notes: "Imported from upload. Review extracted fields before relying on it.",
+    fileName,
+    confidence: Math.min(95, 35 + fields * 15 + (type !== "Other" ? 15 : 0)),
+  };
+}
+
+function loadGarage() {
+  if (typeof localStorage === "undefined") return seedGarage;
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey));
+    if (saved?.vehicles?.length) return saved;
+  } catch {
+    return seedGarage;
+  }
+  return seedGarage;
+}
+
+function canCloudSync() {
+  return Boolean(syncConfig.url && syncConfig.anonKey);
+}
+
+async function fetchCloudGarage() {
+  if (!canCloudSync()) return null;
+  const response = await fetch(`${syncConfig.url}/rest/v1/garage_states?id=eq.${encodeURIComponent(syncConfig.id)}&select=data`, {
+    headers: {
+      apikey: syncConfig.anonKey,
+      Authorization: `Bearer ${syncConfig.anonKey}`,
+    },
+  });
+  if (!response.ok) throw new Error("Cloud sync read failed");
+  const rows = await response.json();
+  return rows[0]?.data || null;
+}
+
+async function saveCloudGarage(garage) {
+  if (!canCloudSync()) return;
+  const response = await fetch(`${syncConfig.url}/rest/v1/garage_states`, {
+    method: "POST",
+    headers: {
+      apikey: syncConfig.anonKey,
+      Authorization: `Bearer ${syncConfig.anonKey}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates",
+    },
+    body: JSON.stringify({ id: syncConfig.id, data: garage, updated_at: new Date().toISOString() }),
+  });
+  if (!response.ok) throw new Error("Cloud sync write failed");
+}
+
+function createVehicle(index) {
+  return {
+    ...seedVehicle,
+    id: `vehicle-${Date.now()}`,
+    name: `Vehicle ${index}`,
+    purchaseDate: today,
+    purchasePrice: 0,
+    currentKilometers: 0,
+    purchaseKilometers: 0,
+    estimatedValue: 0,
+    targetSellKilometers: 150000,
+    annualKilometers: 15000,
+    maintenanceReserve: 1200,
+    records: [],
+    recurring: [],
+    reviewQueue: [],
+  };
+}
+
+function Stat({ label, value, sub, tone = "" }) {
   return (
-    <div className="bar-list">
-      {rows.map((row) => {
-        const value = number(row[valueKey]);
-        return (
-          <div className="bar-row" key={row[labelKey]}>
-            <div className="bar-label">
-              <span>{row[labelKey] || "Unknown"}</span>
-              <strong>{valueFormat(value)}</strong>
-            </div>
-            <div className="bar-track" aria-hidden="true">
-              <span style={{ width: `${Math.max((value / max) * 100, 2)}%` }} />
-            </div>
-            {subFormat ? <p>{subFormat(row)}</p> : null}
-          </div>
-        );
-      })}
-    </div>
+    <article className={`stat ${tone}`}>
+      <p>{label}</p>
+      <strong>{value}</strong>
+      <span>{sub}</span>
+    </article>
   );
 }
 
-function DonutChart({ rows, labelKey, valueKey }) {
-  const total = rows.reduce((sum, row) => sum + number(row[valueKey]), 0);
-  let offset = 25;
-  const colors = ["#176b87", "#2d9c7c", "#d7923f", "#8f5f3d", "#6e7781", "#a85547"];
+function Bar({ label, value, max, color = "#2f7f72", detail }) {
   return (
-    <div className="donut-wrap">
-      <svg viewBox="0 0 42 42" className="donut" role="img" aria-label="Share chart">
-        <circle cx="21" cy="21" r="15.9" fill="transparent" stroke="#e4ebe7" strokeWidth="5" />
-        {rows.slice(0, 6).map((row, index) => {
-          const share = total ? (number(row[valueKey]) / total) * 100 : 0;
-          const segment = (
-            <circle
-              key={row[labelKey]}
-              cx="21"
-              cy="21"
-              r="15.9"
-              fill="transparent"
-              stroke={colors[index % colors.length]}
-              strokeWidth="5"
-              strokeDasharray={`${share} ${100 - share}`}
-              strokeDashoffset={offset}
-            />
-          );
-          offset -= share;
-          return segment;
-        })}
-      </svg>
-      <div className="donut-legend">
-        {rows.slice(0, 6).map((row, index) => (
-          <div key={row[labelKey]}>
-            <span style={{ background: colors[index % colors.length] }} />
-            <p>{row[labelKey]}</p>
-            <strong>{pct(number(row[valueKey]), total)}</strong>
-          </div>
-        ))}
+    <div className="bar-item">
+      <div className="bar-meta">
+        <span>{label}</span>
+        <strong>{currency.format(value)}</strong>
       </div>
+      <div className="bar-rail"><span style={{ width: `${Math.max((value / max) * 100, 3)}%`, background: color }} /></div>
+      {detail ? <small>{detail}</small> : null}
     </div>
   );
 }
 
-function ColumnChart({ rows, labelKey, valueKey, valueFormat = compact.format }) {
-  const max = maxOf(rows, valueKey);
+function MiniTrend({ rows }) {
+  const max = Math.max(...rows.map((row) => row.consumption || row.price), 1);
   return (
-    <div className="column-chart">
+    <div className="mini-trend">
       {rows.map((row) => (
-        <div className="column" key={row[labelKey]}>
-          <strong>{valueFormat(number(row[valueKey]))}</strong>
-          <span style={{ height: `${Math.max((number(row[valueKey]) / max) * 100, 4)}%` }} />
-          <p>{row[labelKey]}</p>
+        <div key={row.id}>
+          <span style={{ height: `${Math.max(((row.consumption || row.price) / max) * 100, 8)}%` }} />
+          <small>{row.label}</small>
         </div>
       ))}
     </div>
   );
 }
 
-function StatCard({ label, value, note }) {
-  return (
-    <article className="stat-card">
-      <p>{label}</p>
-      <strong>{value}</strong>
-      <span>{note}</span>
-    </article>
-  );
-}
-
-function DataTable({ rows, columns }) {
-  return (
-    <div className="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            {columns.map((column) => (
-              <th key={column.key}>{column.label}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, index) => (
-            <tr key={`${row[columns[0].key]}-${index}`}>
-              {columns.map((column) => (
-                <td key={column.key}>{column.render ? column.render(row) : row[column.key]}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+function buildModel(vehicle) {
+  const records = vehicle.records || [];
+  const kilometersOwned = Math.max(toNumber(vehicle.currentKilometers) - toNumber(vehicle.purchaseKilometers), 1);
+  const directSpend = records.reduce((sum, record) => sum + toNumber(record.amount), 0);
+  const depreciation = Math.max(toNumber(vehicle.purchasePrice) - toNumber(vehicle.estimatedValue), 0);
+  const totalCost = directSpend + depreciation;
+  const costPerKm = totalCost / kilometersOwned;
+  const fuelRows = records.filter((record) => record.type === "Fuel").sort((a, b) => toNumber(a.odometer) - toNumber(b.odometer));
+  const chargeRows = records.filter((record) => record.type === "Charge").sort((a, b) => toNumber(a.odometer) - toNumber(b.odometer));
+  const fuelSpend = fuelRows.reduce((sum, record) => sum + toNumber(record.amount), 0);
+  const chargeSpend = chargeRows.reduce((sum, record) => sum + toNumber(record.amount), 0);
+  const liters = fuelRows.reduce((sum, record) => sum + toNumber(record.liters), 0);
+  const kwh = chargeRows.reduce((sum, record) => sum + toNumber(record.kwh), 0);
+  const fuelOdometers = fuelRows.map((record) => toNumber(record.odometer)).filter(Boolean);
+  const chargeOdometers = chargeRows.map((record) => toNumber(record.odometer)).filter(Boolean);
+  const fuelDistance = fuelOdometers.length > 1 ? Math.max(...fuelOdometers) - Math.min(...fuelOdometers) : 0;
+  const chargeDistance = chargeOdometers.length > 1 ? Math.max(...chargeOdometers) - Math.min(...chargeOdometers) : 0;
+  const avgFuelPrice = liters ? fuelSpend / liters : 0;
+  const avgChargePrice = kwh ? chargeSpend / kwh : 0;
+  const consumption = liters && fuelDistance ? (liters / fuelDistance) * 100 : 0;
+  const chargeConsumption = kwh && chargeDistance ? (kwh / chargeDistance) * 100 : 0;
+  const ownershipMonths = monthsBetween(vehicle.purchaseDate);
+  const monthlyCost = totalCost / ownershipMonths;
+  const remainingKilometers = Math.max(toNumber(vehicle.targetSellKilometers) - toNumber(vehicle.currentKilometers), 0);
+  const sellInMonths = toNumber(vehicle.annualKilometers) ? Math.round((remainingKilometers / toNumber(vehicle.annualKilometers)) * 12) : 0;
+  const reserveTrend = records.filter((record) => ["Service", "Repairs", "Tires"].includes(record.type)).reduce((sum, record) => sum + toNumber(record.amount), 0) / Math.max(ownershipMonths / 12, 1);
+  const sellScore = Math.min(100, Math.round((toNumber(vehicle.currentKilometers) / Math.max(toNumber(vehicle.targetSellKilometers), 1)) * 58 + (costPerKm / 0.6) * 24 + (reserveTrend / Math.max(toNumber(vehicle.maintenanceReserve), 1)) * 18));
+  const categoriesBySpend = categories.map((type) => ({
+    type,
+    total: records.filter((record) => record.type === type).reduce((sum, record) => sum + toNumber(record.amount), 0),
+  })).filter((row) => row.total > 0).sort((a, b) => b.total - a.total);
+  const maxCategory = Math.max(...categoriesBySpend.map((row) => row.total), 1);
+  const nextMilestone = servicePlan.find((item) => item.km > toNumber(vehicle.currentKilometers)) || servicePlan.at(-1);
+  const nextHeavyService = nextMilestone.km <= toNumber(vehicle.currentKilometers) ? "Major service window is open now" : `${integer.format(nextMilestone.km - toNumber(vehicle.currentKilometers))} km until ${integer.format(nextMilestone.km)} km service`;
+  const sortedRecords = [...records].sort((a, b) => new Date(b.date) - new Date(a.date));
+  const lastRecord = sortedRecords[0];
+  const recurring12 = (vehicle.recurring || []).reduce((sum, item) => sum + (item.cadence === "Monthly" ? toNumber(item.amount) * 12 : toNumber(item.amount)), 0);
+  const timeline = [
+    ...servicePlan.map((item) => ({ ...item, source: "plan", complete: toNumber(vehicle.currentKilometers) >= item.km })),
+    ...records.filter((record) => ["Service", "Repairs", "Tires"].includes(record.type)).map((record) => ({
+      km: toNumber(record.odometer),
+      label: `${record.type}: ${record.vendor || record.fileName}`,
+      date: record.date,
+      source: "record",
+      complete: true,
+    })),
+  ].sort((a, b) => a.km - b.km);
+  const fuelTrend = fuelRows.map((record, index) => {
+    const previous = fuelRows[index - 1];
+    const distance = previous ? toNumber(record.odometer) - toNumber(previous.odometer) : 0;
+    return {
+      id: record.id,
+      label: record.date.slice(5),
+      price: toNumber(record.amount) / Math.max(toNumber(record.liters), 1),
+      consumption: distance > 0 ? (toNumber(record.liters) / distance) * 100 : 0,
+    };
+  });
+  const chargeTrend = chargeRows.map((record, index) => {
+    const previous = chargeRows[index - 1];
+    const distance = previous ? toNumber(record.odometer) - toNumber(previous.odometer) : 0;
+    return {
+      id: record.id,
+      label: record.date.slice(5),
+      price: toNumber(record.amount) / Math.max(toNumber(record.kwh), 1),
+      consumption: distance > 0 ? (toNumber(record.kwh) / distance) * 100 : 0,
+    };
+  });
+  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend };
 }
 
 function App() {
-  const [payload, setPayload] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [refreshing, setRefreshing] = useState(false);
+  const [garage, setGarage] = useState(loadGarage);
+  const [syncState, setSyncState] = useState(canCloudSync() ? "Connecting" : "Local only");
+  const [cloudLoaded, setCloudLoaded] = useState(!canCloudSync());
+  const [form, setForm] = useState({ type: "Service", vendor: "", date: today, amount: "", odometer: "", liters: "", kwh: "", notes: "" });
+  const [activeView, setActiveView] = useState("Records");
+  const [scenarioKm, setScenarioKm] = useState(132000);
+  const [scenarioValue, setScenarioValue] = useState(22000);
+  const fileInput = useRef(null);
 
-  async function loadDashboard(force = false) {
-    setError("");
-    if (force) setRefreshing(true);
-    else setLoading(true);
-    try {
-      const response = await fetch(`/api/customer-dashboard${force ? "?refresh=1" : ""}`);
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Dashboard request failed");
-      setPayload(data);
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }
+  const vehicle = garage.vehicles.find((item) => item.id === garage.activeVehicleId) || garage.vehicles[0];
+  const model = useMemo(() => buildModel(vehicle), [vehicle]);
+  const sellState = model.sellScore >= 78 ? "Sell soon" : model.sellScore >= 55 ? "Plan exit" : "Hold";
 
   useEffect(() => {
-    loadDashboard();
+    localStorage.setItem(storageKey, JSON.stringify(garage));
+    if (!cloudLoaded || !canCloudSync()) return;
+    const timer = window.setTimeout(() => {
+      saveCloudGarage(garage).then(() => setSyncState("Synced")).catch(() => setSyncState("Sync error"));
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [garage, cloudLoaded]);
+
+  useEffect(() => {
+    let alive = true;
+    if (!canCloudSync()) return;
+    fetchCloudGarage()
+      .then((cloudGarage) => {
+        if (!alive) return;
+        if (cloudGarage?.vehicles?.length) {
+          setGarage(cloudGarage);
+          localStorage.setItem(storageKey, JSON.stringify(cloudGarage));
+        }
+        setSyncState("Synced");
+      })
+      .catch(() => {
+        if (alive) setSyncState("Sync error");
+      })
+      .finally(() => {
+        if (alive) setCloudLoaded(true);
+      });
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const model = useMemo(() => {
-    if (!payload) return null;
-    const summary = payload.summary || {};
-    const customers = number(summary.customers);
-    const sales = number(summary.total_sales);
-    const active90 = (payload.recency || []).find((row) => row.recency_bucket === "0-90 days") || {};
-    const topMarket = (payload.markets || [])[0] || {};
-    return { summary, customers, sales, active90, topMarket };
-  }, [payload]);
+  useEffect(() => {
+    setScenarioKm(toNumber(vehicle.targetSellKilometers));
+    setScenarioValue(Math.max(toNumber(vehicle.estimatedValue) - 3500, 0));
+  }, [vehicle.id, vehicle.targetSellKilometers, vehicle.estimatedValue]);
 
-  if (loading) {
-    return (
-      <main className="dashboard-shell">
-        <section className="loading-panel">Loading BigQuery dashboard...</section>
-      </main>
-    );
+  function updateVehicle(key, value) {
+    setGarage((current) => ({
+      ...current,
+      vehicles: current.vehicles.map((item) => item.id === vehicle.id ? { ...item, [key]: value } : item),
+    }));
   }
 
-  if (error) {
-    return (
-      <main className="dashboard-shell">
-        <section className="error-panel">
-          <p>BigQuery connection needs attention</p>
-          <h1>Could not load the customer dashboard.</h1>
-          <pre>{error}</pre>
-          <button onClick={() => loadDashboard(true)}>Retry</button>
-        </section>
-      </main>
-    );
+  function updateVehicleList(nextVehicle) {
+    setGarage((current) => ({
+      ...current,
+      vehicles: current.vehicles.map((item) => item.id === nextVehicle.id ? nextVehicle : item),
+    }));
   }
+
+  function addRecord(event) {
+    event.preventDefault();
+    if (!form.amount || !form.date) return;
+    updateVehicleList({ ...vehicle, records: [{ ...form, id: Date.now(), fileName: "Manual entry" }, ...(vehicle.records || [])] });
+    setForm({ type: "Service", vendor: "", date: today, amount: "", odometer: "", liters: "", kwh: "", notes: "" });
+  }
+
+  function removeRecord(id) {
+    updateVehicleList({ ...vehicle, records: (vehicle.records || []).filter((record) => record.id !== id) });
+  }
+
+  function approveReview(item) {
+    const { confidence, ...record } = item;
+    updateVehicleList({
+      ...vehicle,
+      records: [{ ...record, notes: record.notes.replace("Imported from upload. ", "") }, ...(vehicle.records || [])],
+      reviewQueue: (vehicle.reviewQueue || []).filter((review) => review.id !== item.id),
+    });
+  }
+
+  function discardReview(id) {
+    updateVehicleList({ ...vehicle, reviewQueue: (vehicle.reviewQueue || []).filter((review) => review.id !== id) });
+  }
+
+  async function handleFiles(files) {
+    const uploaded = await Promise.all(Array.from(files).map(async (file) => {
+      const text = file.type.startsWith("text/") || /\.(csv|txt|json)$/i.test(file.name) ? await file.text() : "";
+      return parseUploadedText(text, file.name);
+    }));
+    updateVehicleList({ ...vehicle, reviewQueue: [...uploaded, ...(vehicle.reviewQueue || [])] });
+    setActiveView("Records");
+  }
+
+  function addVehicle() {
+    const nextVehicle = createVehicle(garage.vehicles.length + 1);
+    setGarage((current) => ({ activeVehicleId: nextVehicle.id, vehicles: [...current.vehicles, nextVehicle] }));
+    setActiveView("Garage");
+  }
+
+  const scenarioDistance = Math.max(toNumber(scenarioKm) - toNumber(vehicle.currentKilometers), 1);
+  const scenarioDepreciation = Math.max(toNumber(vehicle.purchasePrice) - toNumber(scenarioValue), 0);
+  const projectedCostPerKm = (model.directSpend + scenarioDepreciation + scenarioDistance * Math.max(model.costPerKm * 0.42, 0.08)) / Math.max(toNumber(scenarioKm) - toNumber(vehicle.purchaseKilometers), 1);
 
   return (
-    <main className="dashboard-shell">
-      <nav className="customer-nav">
-        <a href="/">Radar</a>
-        <a href="/investments">Investments</a>
-        <a className="active" href="/customers">Customers</a>
-      </nav>
-
-      <section className="hero">
+    <main className="app-shell">
+      <header className="topbar">
         <div>
-          <p className="eyebrow">BigQuery customer intelligence</p>
-          <h1>Customer dashboard for revenue, retention, and CRM quality.</h1>
-          <p className="lede">
-            Aggregate dashboard from {payload.table}. It avoids raw customer records and focuses on
-            segments that can guide growth, reactivation, and email operations.
-          </p>
+          <p>Garage ledger</p>
+          <h1>Car ownership dashboard</h1>
         </div>
-        <div className="hero-aside">
-          <span>Last purchase</span>
-          <strong>{model.summary.last_purchase_max}</strong>
-          <span>Loaded {new Date(payload.loaded_at).toLocaleString()}</span>
-          <button disabled={refreshing} onClick={() => loadDashboard(true)}>
-            {refreshing ? "Refreshing..." : "Refresh BigQuery"}
+        <nav aria-label="Dashboard sections">
+          {views.map((view) => (
+            <button key={view} className={activeView === view ? "active" : ""} onClick={() => setActiveView(view)}>{view}</button>
+          ))}
+        </nav>
+      </header>
+
+      <section className="garage-switcher" aria-label="Vehicles">
+        {garage.vehicles.map((item) => (
+          <button key={item.id} className={item.id === vehicle.id ? "active" : ""} onClick={() => setGarage((current) => ({ ...current, activeVehicleId: item.id }))}>
+            <strong>{item.name}</strong>
+            <span>{formatKm(toNumber(item.currentKilometers))}</span>
           </button>
+        ))}
+        <button className="add-vehicle" onClick={addVehicle}>+ Add vehicle</button>
+      </section>
+
+      <section className="hero-panel">
+        <div className="vehicle-card">
+          <div className="panel-head">
+            <div>
+              <p>Vehicle profile</p>
+              <h2>Ownership assumptions</h2>
+            </div>
+            <span>{formatKm(toNumber(vehicle.currentKilometers))}</span>
+          </div>
+          <label className="vehicle-name">Vehicle<input value={vehicle.name} onChange={(event) => updateVehicle("name", event.target.value)} /></label>
+          <div className="vehicle-grid">
+            <label>Current km<input type="number" value={vehicle.currentKilometers} onChange={(event) => updateVehicle("currentKilometers", event.target.value)} /></label>
+            <label>Market value, EUR<input type="number" value={vehicle.estimatedValue} onChange={(event) => updateVehicle("estimatedValue", event.target.value)} /></label>
+            <label>Sell target km<input type="number" value={vehicle.targetSellKilometers} onChange={(event) => updateVehicle("targetSellKilometers", event.target.value)} /></label>
+            <label>Annual km<input type="number" value={vehicle.annualKilometers} onChange={(event) => updateVehicle("annualKilometers", event.target.value)} /></label>
+            <label>Purchase price, EUR<input type="number" value={vehicle.purchasePrice} onChange={(event) => updateVehicle("purchasePrice", event.target.value)} /></label>
+            <label>Purchase km<input type="number" value={vehicle.purchaseKilometers} onChange={(event) => updateVehicle("purchaseKilometers", event.target.value)} /></label>
+          </div>
         </div>
+        <div className="sell-card">
+          <div className="panel-head compact">
+            <div>
+              <p>Recommendation</p>
+              <h2>{sellState}</h2>
+            </div>
+            <span>{model.sellScore}/100</span>
+          </div>
+          <div className="score-rail"><span style={{ width: `${model.sellScore}%` }} /></div>
+          <div className="recommendation-list">
+            <div><span>Timing</span><strong>{model.sellInMonths ? `${model.sellInMonths} months` : "Now"}</strong></div>
+            <div><span>Next service</span><strong>{model.nextHeavyService}</strong></div>
+            <div><span>Depreciation</span><strong>{currency.format(model.depreciation)}</strong></div>
+          </div>
+        </div>
+      </section>
+
+      <section className="status-strip" aria-label="Ownership status">
+        <div><span>Records</span><strong>{integer.format((vehicle.records || []).length)}</strong></div>
+        <div><span>Review queue</span><strong>{integer.format((vehicle.reviewQueue || []).length)}</strong></div>
+        <div><span>Recurring 12 mo</span><strong>{currency.format(model.recurring12)}</strong></div>
+        <div><span>Cloud sync</span><strong>{syncState}</strong></div>
       </section>
 
       <section className="stats-grid">
-        <StatCard label="Customers" value={integer.format(model.customers)} note="Rows in customer_modified" />
-        <StatCard label="Total sales" value={money.format(model.sales)} note={`Avg ${moneyExact.format(number(model.summary.avg_customer_sales))} per customer`} />
-        <StatCard label="Median customer" value={moneyExact.format(number(model.summary.median_customer_sales))} note={`AOV ${moneyExact.format(number(model.summary.avg_aov))}`} />
-        <StatCard label="Active in 90 days" value={integer.format(number(model.active90.customers))} note={`${pct(number(model.active90.sales), model.sales)} of sales`} />
-      </section>
-
-      <section className="dashboard-grid">
-        <article className="panel chart-card wide">
-          <div className="section-title">
-            <p>Market mix</p>
-            <h2>Revenue by market</h2>
-          </div>
-          <div className="chart-table-split">
-            <DonutChart rows={payload.markets || []} labelKey="market" valueKey="sales" />
-            <DataTable
-              rows={payload.markets || []}
-              columns={[
-                { key: "market", label: "Market" },
-                { key: "customers", label: "Customers", render: (row) => integer.format(number(row.customers)) },
-                { key: "sales", label: "Sales", render: (row) => money.format(number(row.sales)) },
-                { key: "avg_aov", label: "AOV", render: (row) => moneyExact.format(number(row.avg_aov)) },
-              ]}
-            />
-          </div>
-        </article>
-
-        <article className="panel chart-card">
-          <div className="section-title">
-            <p>Lifecycle</p>
-            <h2>Recency value</h2>
-          </div>
-          <BarList
-            rows={payload.recency || []}
-            labelKey="recency_bucket"
-            valueKey="sales"
-            valueFormat={money.format}
-            subFormat={(row) => `${integer.format(number(row.customers))} customers, ${moneyExact.format(number(row.avg_sales))} avg sales`}
-          />
-        </article>
-
-        <article className="panel chart-card">
-          <div className="section-title">
-            <p>Product signals</p>
-            <h2>Product affinity revenue</h2>
-          </div>
-          <ColumnChart
-            rows={payload.product_affinity || []}
-            labelKey="segment"
-            valueKey="sales"
-            valueFormat={money.format}
-          />
-        </article>
-
-        <article className="panel chart-card">
-          <div className="section-title">
-            <p>CRM hygiene</p>
-            <h2>Email status by customers</h2>
-          </div>
-          <BarList
-            rows={payload.email_status || []}
-            labelKey="email_status"
-            valueKey="customers"
-            valueFormat={integer.format}
-            subFormat={(row) => money.format(number(row.sales))}
-          />
-        </article>
-
-        <article className="panel chart-card">
-          <div className="section-title">
-            <p>CLV distribution</p>
-            <h2>Value tiers by revenue</h2>
-          </div>
-          <DataTable
-            rows={payload.clv_ranges || []}
-            columns={[
-              { key: "clv_range", label: "Range" },
-              { key: "customers", label: "Customers", render: (row) => integer.format(number(row.customers)) },
-              { key: "sales", label: "Sales", render: (row) => money.format(number(row.sales)) },
-              { key: "avg_orders", label: "Orders", render: (row) => Number(number(row.avg_orders).toFixed(1)) },
-            ]}
-          />
-        </article>
-
-        <article className="panel chart-card wide">
-          <div className="section-title">
-            <p>Acquisition cohorts</p>
-            <h2>New customers by first purchase year</h2>
-          </div>
-          <ColumnChart
-            rows={payload.acquisition || []}
-            labelKey="year"
-            valueKey="new_customers"
-            valueFormat={compact.format}
-          />
-        </article>
-      </section>
-
-      <section className="panel insight-board">
-        <div className="section-title">
-          <p>Executive readout</p>
-          <h2>What the data is saying</h2>
-        </div>
-        <div className="insight-grid">
-          {(payload.insights || []).map((insight) => (
-            <article className="insight-card" key={insight.title}>
-              <h2>{insight.title}</h2>
-              <p>{insight.body}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="section-title">
-          <p>Geography</p>
-          <h2>Top regions</h2>
-        </div>
-        <DataTable
-          rows={payload.regions || []}
-          columns={[
-            { key: "region", label: "Region" },
-            { key: "customers", label: "Customers", render: (row) => integer.format(number(row.customers)) },
-            { key: "sales", label: "Sales", render: (row) => money.format(number(row.sales)) },
-            { key: "avg_sales", label: "Avg / customer", render: (row) => moneyExact.format(number(row.avg_sales)) },
-          ]}
+        <Stat label="Total cost" value={currency.format(model.totalCost)} sub={`${currency.format(model.directSpend)} cash + ${currency.format(model.depreciation)} depreciation`} />
+        <Stat label="Cost per km" value={currencyExact.format(model.costPerKm)} sub={`${formatKm(model.kilometersOwned)} owned`} tone="primary" />
+        <Stat label="Monthly burn" value={currency.format(model.monthlyCost)} sub="Ownership cost normalized by time" />
+        <Stat
+          label="Energy average"
+          value={model.avgChargePrice ? `${currencyExact.format(model.avgChargePrice)}/kWh` : (model.avgFuelPrice ? `${currencyExact.format(model.avgFuelPrice)}/L` : "0,00 €")}
+          sub={`${decimal.format(model.liters)} L · ${decimal.format(model.kwh)} kWh${model.chargeConsumption ? ` · ${decimal.format(model.chargeConsumption)} kWh/100 km` : model.consumption ? ` · ${decimal.format(model.consumption)} L/100 km` : ""}`}
         />
+      </section>
+
+      <section className="workbench">
+        <aside className="panel upload-panel">
+          <div className="section-title">
+            <p>Capture</p>
+            <h2>Upload and manual entry</h2>
+          </div>
+          <button className="upload-zone" onClick={() => fileInput.current?.click()} onDrop={(event) => { event.preventDefault(); handleFiles(event.dataTransfer.files); }} onDragOver={(event) => event.preventDefault()}>
+            <span>+</span>
+            <strong>Add documents</strong>
+            <small>Uploads land in review before they affect totals.</small>
+          </button>
+          <input ref={fileInput} type="file" multiple hidden onChange={(event) => handleFiles(event.target.files)} />
+
+          <form onSubmit={addRecord} className="record-form">
+            <label>Type<select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}>{categories.map((type) => <option key={type}>{type}</option>)}</select></label>
+            <label>Vendor<input value={form.vendor} onChange={(event) => setForm({ ...form, vendor: event.target.value })} placeholder="Shop, insurer, station" /></label>
+            <div className="form-pair">
+              <label>Date<input type="date" value={form.date} onChange={(event) => setForm({ ...form, date: event.target.value })} /></label>
+              <label>Amount, EUR<input type="number" step="0.01" value={form.amount} onChange={(event) => setForm({ ...form, amount: event.target.value })} /></label>
+            </div>
+            <div className="form-pair">
+              <label>Odometer km<input type="number" value={form.odometer} onChange={(event) => setForm({ ...form, odometer: event.target.value })} /></label>
+              <label>Litres<input type="number" step="0.01" value={form.liters} onChange={(event) => setForm({ ...form, liters: event.target.value })} /></label>
+            </div>
+            <label>kWh<input type="number" step="0.01" value={form.kwh} onChange={(event) => setForm({ ...form, kwh: event.target.value })} /></label>
+            <label>Notes<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="What happened?" /></label>
+            <button type="submit">Save record</button>
+          </form>
+        </aside>
+
+        <section className="panel main-panel">
+          {activeView === "Records" && (
+            <>
+              <div className="section-title"><p>Review queue</p><h2>Imported documents</h2></div>
+              <div className="review-list">
+                {(vehicle.reviewQueue || []).length ? vehicle.reviewQueue.map((item) => (
+                  <article className="review-row" key={item.id}>
+                    <div><strong>{item.vendor}</strong><small>{item.fileName} · {item.confidence}% confidence</small></div>
+                    <p>{item.type} · {item.amount ? currencyExact.format(toNumber(item.amount)) : "No amount"} · {item.odometer ? formatKm(toNumber(item.odometer)) : "No km"}</p>
+                    <button onClick={() => approveReview(item)}>Approve</button>
+                    <button className="ghost-button" onClick={() => discardReview(item.id)}>Discard</button>
+                  </article>
+                )) : <p className="empty-note">No documents waiting for review.</p>}
+              </div>
+
+              <div className="section-title with-gap"><p>Ledger</p><h2>Ownership documents and costs</h2></div>
+              <div className="record-list">
+                {model.sortedRecords.map((record) => (
+                  <article className="record-row" key={record.id}>
+                    <span className={`type-dot ${record.type.toLowerCase()}`} />
+                    <div><strong>{record.vendor || record.type}</strong><small>{record.date} · {record.fileName}</small></div>
+                    <p>{record.notes}<span>{record.odometer ? ` ${formatKm(toNumber(record.odometer))}` : ""}{record.liters ? ` · ${decimal.format(toNumber(record.liters))} L` : ""}{record.kwh ? ` · ${decimal.format(toNumber(record.kwh))} kWh` : ""}</span></p>
+                    <b>{currencyExact.format(toNumber(record.amount))}</b>
+                    <button className="icon-button" type="button" aria-label={`Remove ${record.vendor || record.type}`} onClick={() => removeRecord(record.id)}>×</button>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+
+          {activeView === "Costs" && (
+            <>
+              <div className="section-title"><p>Cost stack</p><h2>Where the money goes</h2></div>
+              <div className="cost-layout">
+                <div className="bar-list">
+                  {model.categoriesBySpend.map((row, index) => <Bar key={row.type} label={row.type} value={row.total} max={model.maxCategory} color={["#2f7f72", "#c2653a", "#31688e", "#8d6b2f", "#665f73"][index % 5]} detail={`${currencyExact.format(row.total / model.kilometersOwned)} per km`} />)}
+                  <Bar label="Depreciation" value={model.depreciation} max={Math.max(model.maxCategory, model.depreciation)} color="#252b2f" detail="Market value estimate vs purchase" />
+                </div>
+                <div className="meter-card">
+                  <span>{currencyExact.format(model.costPerKm)}</span>
+                  <p>Every kilometre carries fuel, maintenance, paperwork, insurance, and depreciation.</p>
+                </div>
+              </div>
+              <div className="section-title with-gap"><p>Energy trend</p><h2>Fuel and electric charging</h2></div>
+              {model.fuelTrend.length ? <MiniTrend rows={model.fuelTrend} /> : <p className="empty-note">Add fuel receipts with km and litres to chart consumption.</p>}
+              {model.chargeTrend.length ? <MiniTrend rows={model.chargeTrend} /> : <p className="empty-note">Add charge receipts with km and kWh to chart charging efficiency.</p>}
+            </>
+          )}
+
+          {activeView === "Timeline" && (
+            <>
+              <div className="section-title"><p>Service timeline</p><h2>Past work and upcoming milestones</h2></div>
+              <div className="timeline-list">
+                {model.timeline.map((item) => (
+                  <article key={`${item.source}-${item.km}-${item.label}`} className={item.complete ? "complete" : ""}>
+                    <span>{formatKm(item.km)}</span>
+                    <div><strong>{item.label}</strong><small>{item.date || (item.complete ? "Reached" : "Upcoming")}</small></div>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+
+          {activeView === "Sell" && (
+            <>
+              <div className="section-title"><p>Exit model</p><h2>When to sell</h2></div>
+              <div className="sell-grid">
+                <div className="timeline-card"><span style={{ width: `${Math.min((toNumber(vehicle.currentKilometers) / Math.max(toNumber(vehicle.targetSellKilometers), 1)) * 100, 100)}%` }} /><strong>{formatKm(toNumber(vehicle.currentKilometers))}</strong><small>Target: {formatKm(toNumber(vehicle.targetSellKilometers))}</small></div>
+                <article><strong>{sellState}</strong><p>{model.sellScore >= 78 ? "The car is close to the kilometre target and the next expensive maintenance window can erase remaining value." : model.sellScore >= 55 ? "Start preparing sale photos, title, and maintenance packet while you still have optionality." : "Costs are controlled enough to keep driving, as long as repairs stay within reserve."}</p></article>
+                <article><strong>{currency.format(toNumber(vehicle.maintenanceReserve))}</strong><p>Annual maintenance reserve. Current service, repair and tyre trend should stay below this line.</p></article>
+              </div>
+              <div className="scenario-panel">
+                <div className="section-title"><p>Scenario sliders</p><h2>Projected exit cost</h2></div>
+                <label>Sell at km<input type="range" min={Math.max(toNumber(vehicle.currentKilometers), 1000)} max="220000" step="5000" value={scenarioKm} onChange={(event) => setScenarioKm(event.target.value)} /><strong>{formatKm(toNumber(scenarioKm))}</strong></label>
+                <label>Expected resale<input type="range" min="0" max={Math.max(toNumber(vehicle.purchasePrice), 10000)} step="500" value={scenarioValue} onChange={(event) => setScenarioValue(event.target.value)} /><strong>{currency.format(toNumber(scenarioValue))}</strong></label>
+                <div className="scenario-result"><span>Projected cost per km</span><strong>{currencyExact.format(projectedCostPerKm)}</strong></div>
+              </div>
+            </>
+          )}
+
+          {activeView === "Garage" && (
+            <>
+              <div className="section-title"><p>Recurring schedule</p><h2>Upcoming ownership costs</h2></div>
+              <div className="schedule-list">
+                {(vehicle.recurring || []).map((item) => (
+                  <article key={item.id}>
+                    <div><strong>{item.name}</strong><small>{item.cadence} · next {item.nextDue}</small></div>
+                    <b>{currency.format(toNumber(item.amount))}</b>
+                  </article>
+                ))}
+              </div>
+              <div className="section-title with-gap"><p>Garage</p><h2>Vehicles</h2></div>
+              <div className="vehicle-list">
+                {garage.vehicles.map((item) => (
+                  <article key={item.id} className={item.id === vehicle.id ? "active" : ""}>
+                    <div><strong>{item.name}</strong><small>{formatKm(toNumber(item.currentKilometers))} · {currency.format(toNumber(item.estimatedValue))}</small></div>
+                    <button onClick={() => setGarage((current) => ({ ...current, activeVehicleId: item.id }))}>Open</button>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
       </section>
     </main>
   );

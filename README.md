@@ -39,6 +39,34 @@ npm run build
 python3 server.py
 ```
 
+## Customer dashboard cloud sync
+
+The customer dashboard can run with local-only browser storage or shared cloud
+sync. For cross-device saving, create a Supabase project with this table:
+
+```sql
+create table public.garage_states (
+  id text primary key,
+  data jsonb not null,
+  updated_at timestamptz default now()
+);
+```
+
+For a private personal demo, enable row-level security and add policies that
+allow your anon key to read/write this single table, or keep the project locked
+behind your own Supabase auth rules before sharing the URL publicly.
+
+Add these GitHub repository secrets before the Pages deploy runs:
+
+```bash
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key
+VITE_GARAGE_SYNC_ID=simon-garage
+```
+
+Without those secrets, the dashboard still works online but saves only in the
+current browser.
+
 To connect that page to Trading 212, export these variables before starting the server:
 
 ```bash
