@@ -163,7 +163,7 @@ h2 {
   background: #fff1ee;
 }
 
-.dashboard-intro,
+.cockpit-hero,
 .stat,
 .panel {
   border: 1px solid #d7dde4;
@@ -172,22 +172,49 @@ h2 {
   box-shadow: 0 10px 32px rgba(31, 41, 51, 0.06);
 }
 
-.dashboard-intro {
+.cockpit-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
   gap: 18px;
   margin-bottom: 10px;
-  padding: 16px;
+  padding: 20px;
+  color: #fff;
+  border-color: #17201d;
+  background:
+    linear-gradient(135deg, rgba(23, 32, 29, 0.96), rgba(31, 41, 51, 0.94)),
+    radial-gradient(circle at 85% 20%, rgba(104, 179, 159, 0.28), transparent 34%);
 }
 
-.dashboard-intro p {
+.cockpit-main {
+  display: grid;
+  gap: 10px;
+}
+
+.cockpit-main p,
+.next-action-panel p {
   margin: 0;
-  color: #697586;
+  color: rgba(255, 255, 255, 0.64);
   text-transform: uppercase;
   letter-spacing: 0.07em;
   font-size: 0.72rem;
   font-weight: 800;
+}
+
+.cockpit-main h1 {
+  font-size: clamp(2rem, 4vw, 4.4rem);
+  line-height: 0.95;
+}
+
+.cockpit-main > strong {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 1rem;
+}
+
+.cockpit-side {
+  display: grid;
+  grid-template-columns: repeat(2, 112px);
+  gap: 10px;
+  align-content: center;
 }
 
 .score-chip {
@@ -198,6 +225,73 @@ h2 {
   border-radius: 8px;
   background: linear-gradient(90deg, #2f7f72 var(--score), #e4e9ee 0);
   text-align: center;
+}
+
+.document-ring {
+  width: 112px;
+  height: 112px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, #17201d 0 58%, transparent 59%),
+    conic-gradient(#68b39f var(--complete), rgba(255, 255, 255, 0.16) 0);
+}
+
+.document-ring strong,
+.document-ring span {
+  grid-area: 1 / 1;
+}
+
+.document-ring strong {
+  margin-top: -14px;
+  color: #fff;
+  font-size: 1.4rem;
+}
+
+.document-ring span {
+  align-self: end;
+  margin-bottom: 26px;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 0.62rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.health-track {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  max-width: 720px;
+  margin-top: 10px;
+}
+
+.health-track span {
+  height: 34px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.health-track span::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--value);
+  background: linear-gradient(90deg, #68b39f, #e8a044);
+}
+
+.health-track b {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-size: 0.66rem;
 }
 
 .score-chip strong {
@@ -685,6 +779,37 @@ textarea {
   min-width: 0;
 }
 
+.next-action-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 16px;
+  border: 1px solid #b7d7cf;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(135deg, #245e55, #17201d);
+}
+
+.next-action-panel h2 {
+  margin: 4px 0 5px;
+  font-size: 1.65rem;
+}
+
+.next-action-panel span {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.next-action-panel button {
+  min-height: 40px;
+  padding: 9px 14px;
+  border-radius: 7px;
+  color: #17201d;
+  background: #fff;
+  font-weight: 900;
+}
+
 .insight-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -729,6 +854,38 @@ textarea {
 .overview-rail {
   display: grid;
   gap: 10px;
+}
+
+.action-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.action-list button {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #fff;
+  text-align: left;
+}
+
+.action-list button.warning,
+.action-list button.critical {
+  border-color: #e5b8ae;
+  background: #fff7f5;
+}
+
+.action-list button.watch {
+  border-color: #e8d5a7;
+  background: #fffaf0;
+}
+
+.action-list span {
+  color: #697586;
+  line-height: 1.4;
 }
 
 .compact-list {
@@ -856,6 +1013,44 @@ textarea {
 
 .compact-title {
   margin-bottom: 10px;
+}
+
+.chart-footnote {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.chart-footnote span {
+  color: #52606d;
+  font-weight: 800;
+}
+
+.chart-footnote div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
+}
+
+.chart-footnote b {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #697586;
+  font-size: 0.78rem;
+}
+
+.chart-footnote i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
 }
 
 .monthly-chart {
@@ -1478,7 +1673,10 @@ textarea {
     width: 100%;
   }
 
-  .dashboard-intro,
+  .cockpit-hero,
+  .cockpit-side,
+  .health-track,
+  .next-action-panel,
   .overview-grid,
   .overview-split,
   .insight-strip,
@@ -1504,6 +1702,14 @@ textarea {
 
   .kpi-strip .stat {
     min-height: auto;
+  }
+
+  .cockpit-main h1 {
+    font-size: 2.25rem;
+  }
+
+  .chart-footnote {
+    display: grid;
   }
 
   .record-row {

@@ -608,6 +608,22 @@ function buildDocumentVault(records, recurring) {
   return { documents: [...missing, ...docs], counts };
 }
 
+function buildNextActions({ anomalies, documentVault, upcomingRecurring, nextHeavyService, sellScore, reviewQueue }) {
+  const actions = [];
+  const missingDoc = documentVault.documents.find((doc) => doc.status === "missing");
+  const expiringDoc = documentVault.documents.find((doc) => doc.status === "expiring soon" || doc.status === "expired");
+  if (missingDoc) actions.push({ title: `Add ${missingDoc.type.toLowerCase()} document`, detail: "Complete the required vehicle file.", view: "Vault", tone: "critical" });
+  if (expiringDoc) actions.push({ title: `Review ${expiringDoc.type.toLowerCase()} renewal`, detail: expiringDoc.nextDue ? `Due ${expiringDoc.nextDue}.` : "Renewal date needs attention.", view: "Vault", tone: "warning" });
+  if (reviewQueue?.length) actions.push({ title: "Approve imported documents", detail: `${reviewQueue.length} item${reviewQueue.length === 1 ? "" : "s"} waiting in review.`, view: "Records", tone: "warning" });
+  const anomaly = anomalies.find((item) => item.tone !== "good");
+  if (anomaly) actions.push({ title: anomaly.title, detail: anomaly.detail, view: "Overview", tone: anomaly.tone });
+  if (sellScore >= 55) actions.push({ title: "Prepare sell packet", detail: nextHeavyService, view: "Sell prep", tone: "watch" });
+  const nextDue = upcomingRecurring[0];
+  if (nextDue) actions.push({ title: `Plan ${nextDue.name.toLowerCase()} payment`, detail: `${nextDue.nextDue} · ${currency.format(toNumber(nextDue.amount))}`, view: "Garage", tone: "good" });
+  if (!actions.length) actions.push({ title: "Keep logging costs", detail: "The vehicle file is healthy. Add the next receipt when it comes in.", view: "Records", tone: "good" });
+  return actions.slice(0, 4);
+}
+
 function buildModel(vehicle) {
   const records = vehicle.records || [];
   const kilometersOwned = Math.max(toNumber(vehicle.currentKilometers) - toNumber(vehicle.purchaseKilometers), 1);
@@ -664,7 +680,17 @@ function buildModel(vehicle) {
   const previousMonth = monthlySpend.at(-2);
   const monthlyDelta = latestMonth && previousMonth ? latestMonth.total - previousMonth.total : 0;
   const upcomingRecurring = [...(vehicle.recurring || [])].sort((a, b) => new Date(a.nextDue) - new Date(b.nextDue));
-  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend, monthlySpend, anomalies, documentVault, latestMonth, previousMonth, monthlyDelta, upcomingRecurring };
+  const vaultRequired = documentVault.documents.filter((doc) => ["Insurance", "Registration"].includes(doc.type));
+  const documentCompleteness = Math.round((vaultRequired.filter((doc) => doc.status !== "missing" && doc.status !== "expired").length / Math.max(vaultRequired.length, 1)) * 100);
+  const healthScores = {
+    cost: Math.max(0, Math.min(100, Math.round(100 - costPerKm * 95))),
+    documents: documentCompleteness,
+    maintenance: Math.max(0, Math.min(100, Math.round(100 - (reserveTrend / Math.max(toNumber(vehicle.maintenanceReserve), 1)) * 55))),
+    sell: Math.max(0, Math.min(100, 100 - sellScore)),
+  };
+  const nextActions = buildNextActions({ anomalies, documentVault, upcomingRecurring, nextHeavyService, sellScore, reviewQueue: vehicle.reviewQueue || [] });
+  const monthlyInsight = latestMonth?.segments?.[0] ? `${latestMonth.segments[0].type} drove ${Math.round((latestMonth.segments[0].total / Math.max(latestMonth.total, 1)) * 100)}% of ${latestMonth.month} spend.` : "Add records to generate monthly insight.";
+  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend, monthlySpend, anomalies, documentVault, documentCompleteness, healthScores, nextActions, monthlyInsight, latestMonth, previousMonth, monthlyDelta, upcomingRecurring };
 }
 
 function App() {
@@ -885,17 +911,36 @@ function App() {
         </select></label>
         <div className="top-actions">
           <span className={`sync-pill ${syncState.toLowerCase().replace(/\s/g, "-")}`}>{syncState}</span>
-          <button onClick={addVehicle}>Add vehicle</button>
+          <details className="add-menu">
+            <summary>+ Add</summary>
+            <div>
+              <button type="button" onClick={() => { setActiveView("Records"); fileInput.current?.click(); }}>Upload document</button>
+              <button type="button" onClick={() => setActiveView("Records")}>Add record</button>
+              <button type="button" onClick={() => setActiveView("Garage")}>Add recurring cost</button>
+              <button type="button" onClick={addVehicle}>Add vehicle</button>
+            </div>
+          </details>
         </div>
       </header>
 
-      <section className="dashboard-intro">
-        <div>
-          <p>Active vehicle</p>
+      <section className="cockpit-hero">
+        <div className="cockpit-main">
+          <p>Ownership cockpit</p>
           <h1>{vehicle.name}</h1>
-          <span>{formatKm(toNumber(vehicle.currentKilometers))} · {sellState} · {model.sellInMonths ? `${model.sellInMonths} months to target` : "sell window open"}</span>
+          <strong>{formatKm(toNumber(vehicle.currentKilometers))} · {currencyExact.format(model.costPerKm)}/km · {sellState}{model.sellInMonths ? ` in ${model.sellInMonths} months` : " now"}</strong>
+          <div className="health-track" aria-label="Ownership health">
+            {Object.entries(model.healthScores).map(([key, value]) => (
+              <span key={key} style={{ "--value": `${value}%` }}><b>{key}</b></span>
+            ))}
+          </div>
         </div>
-        <div className="score-chip" style={{ "--score": `${model.sellScore}%` }}><strong>{model.sellScore}</strong><span>sell score</span></div>
+        <div className="cockpit-side">
+          <div className="score-chip" style={{ "--score": `${model.sellScore}%` }}><strong>{model.sellScore}</strong><span>sell score</span></div>
+          <div className="document-ring" style={{ "--complete": `${model.documentCompleteness * 3.6}deg` }}>
+            <strong>{model.documentCompleteness}%</strong>
+            <span>documents</span>
+          </div>
+        </div>
       </section>
 
       <section className="kpi-strip">
@@ -963,6 +1008,14 @@ function App() {
           {activeView === "Overview" && (
             <>
               <div className="section-title"><p>Overview mode</p><h2>What changed and what needs attention</h2></div>
+              <section className="next-action-panel">
+                <div>
+                  <p>Next best action</p>
+                  <h2>{model.nextActions[0]?.title}</h2>
+                  <span>{model.nextActions[0]?.detail}</span>
+                </div>
+                <button type="button" onClick={() => setActiveView(model.nextActions[0]?.view || "Records")}>Open</button>
+              </section>
               <div className="insight-strip">
                 <article>
                   <span>This month</span>
@@ -989,6 +1042,10 @@ function App() {
                 <section className="overview-main">
                   <div className="section-title compact-title"><p>Monthly cost view</p><h2>Spend by month</h2></div>
                   {model.monthlySpend.length ? <MonthlySpendChart rows={model.monthlySpend} /> : <p className="empty-note">Add records to build a monthly spend view.</p>}
+                  <div className="chart-footnote">
+                    <span>{model.monthlyInsight}</span>
+                    <div>{model.categoriesBySpend.slice(0, 4).map((row) => <b key={row.type}><i style={{ background: categoryColors[row.type] || categoryColors.Other }} />{row.type}</b>)}</div>
+                  </div>
                   <div className="overview-split">
                     <section>
                       <div className="section-title compact-title"><p>Categories</p><h2>Top spend</h2></div>
@@ -1017,6 +1074,15 @@ function App() {
                   </div>
                 </section>
                 <section className="overview-rail">
+                  <div className="section-title compact-title"><p>Guidance</p><h2>Action queue</h2></div>
+                  <div className="action-list">
+                    {model.nextActions.map((action) => (
+                      <button key={action.title} type="button" className={action.tone} onClick={() => setActiveView(action.view)}>
+                        <strong>{action.title}</strong>
+                        <span>{action.detail}</span>
+                      </button>
+                    ))}
+                  </div>
                   <div className="section-title compact-title"><p>Anomaly alerts</p><h2>What needs attention</h2></div>
                   <div className="alert-list">
                     {model.anomalies.map((alert) => (
