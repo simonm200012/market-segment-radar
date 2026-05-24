@@ -67,6 +67,39 @@ VITE_GARAGE_SYNC_ID=simon-garage
 Without those secrets, the dashboard still works online but saves only in the
 current browser.
 
+To avoid losing entered costs:
+
+- Every change is saved to `localStorage` immediately.
+- The app keeps the latest 12 local backup snapshots in the browser.
+- When cloud sync is configured, the newest copy wins on startup, so a fresh
+  browser will pull the Supabase copy instead of replacing it with demo data.
+- The Garage tab includes `Export backup` and `Import backup` actions. Export a
+  JSON backup after big data-entry sessions or before changing sync settings.
+
+Recommended Supabase policies for a private single-user dashboard are:
+
+```sql
+alter table public.garage_states enable row level security;
+
+create policy "garage read"
+on public.garage_states
+for select
+using (id = 'simon-garage');
+
+create policy "garage insert"
+on public.garage_states
+for insert
+with check (id = 'simon-garage');
+
+create policy "garage update"
+on public.garage_states
+for update
+using (id = 'simon-garage')
+with check (id = 'simon-garage');
+```
+
+Use the same value for `VITE_GARAGE_SYNC_ID`, or adjust the policy id to match.
+
 To connect that page to Trading 212, export these variables before starting the server:
 
 ```bash

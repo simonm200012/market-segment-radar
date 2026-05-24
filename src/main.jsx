@@ -8,6 +8,8 @@ const integer = new Intl.NumberFormat("sl-SI", { maximumFractionDigits: 0 });
 const decimal = new Intl.NumberFormat("sl-SI", { maximumFractionDigits: 2 });
 const today = "2026-05-23";
 const storageKey = "garage-ledger-v2";
+const backupKey = "garage-ledger-v2-backups";
+const maxBackups = 12;
 const syncConfig = {
   url: import.meta.env.VITE_SUPABASE_URL || "",
   anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || "",
@@ -56,6 +58,7 @@ const seedVehicle = {
 
 const seedGarage = {
   activeVehicleId: seedVehicle.id,
+  updatedAt: "2026-05-23T00:00:00.000Z",
   vehicles: [
     seedVehicle,
     {
@@ -142,12 +145,61 @@ function parseUploadedText(text, fileName) {
 function loadGarage() {
   if (typeof localStorage === "undefined") return seedGarage;
   try {
-    const saved = JSON.parse(localStorage.getItem(storageKey));
+    const saved = normalizeGarage(JSON.parse(localStorage.getItem(storageKey)));
     if (saved?.vehicles?.length) return saved;
   } catch {
-    return seedGarage;
+    return loadLatestBackup();
   }
-  return seedGarage;
+  return loadLatestBackup() || seedGarage;
+}
+
+function normalizeGarage(garage) {
+  if (!garage?.vehicles?.length) return null;
+  return {
+    ...garage,
+    updatedAt: garage.updatedAt || "2026-05-23T00:00:00.000Z",
+    vehicles: garage.vehicles.map((vehicle) => ({
+      ...vehicle,
+      records: vehicle.records || [],
+      recurring: vehicle.recurring || [],
+      reviewQueue: vehicle.reviewQueue || [],
+    })),
+  };
+}
+
+function isNewerGarage(candidate, current) {
+  return new Date(candidate?.updatedAt || 0).getTime() > new Date(current?.updatedAt || 0).getTime();
+}
+
+function stampGarage(garage) {
+  return { ...garage, updatedAt: new Date().toISOString() };
+}
+
+function loadBackups() {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    return JSON.parse(localStorage.getItem(backupKey)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function loadLatestBackup() {
+  const backups = loadBackups();
+  return normalizeGarage(backups[0]?.data);
+}
+
+function saveLocalGarage(garage) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(storageKey, JSON.stringify(garage));
+  const backups = loadBackups();
+  const latest = backups[0];
+  const shouldSnapshot = !latest || latest.updatedAt !== garage.updatedAt;
+  if (!shouldSnapshot) return;
+  localStorage.setItem(backupKey, JSON.stringify([
+    { updatedAt: garage.updatedAt, data: garage },
+    ...backups,
+  ].slice(0, maxBackups)));
 }
 
 function canCloudSync() {
@@ -164,7 +216,7 @@ async function fetchCloudGarage() {
   });
   if (!response.ok) throw new Error("Cloud sync read failed");
   const rows = await response.json();
-  return rows[0]?.data || null;
+  return normalizeGarage(rows[0]?.data) || null;
 }
 
 async function saveCloudGarage(garage) {
@@ -199,6 +251,18 @@ function createVehicle(index) {
     recurring: [],
     reviewQueue: [],
   };
+}
+
+function downloadGarageBackup(garage) {
+  const blob = new Blob([JSON.stringify(garage, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `garage-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }
 
 function Stat({ label, value, sub, tone = "" }) {
@@ -317,15 +381,18 @@ function App() {
   const [scenarioKm, setScenarioKm] = useState(132000);
   const [scenarioValue, setScenarioValue] = useState(22000);
   const fileInput = useRef(null);
+  const importInput = useRef(null);
+  const hasStoredGarage = useRef(typeof localStorage !== "undefined" && Boolean(localStorage.getItem(storageKey)));
 
   const vehicle = garage.vehicles.find((item) => item.id === garage.activeVehicleId) || garage.vehicles[0];
   const model = useMemo(() => buildModel(vehicle), [vehicle]);
   const sellState = model.sellScore >= 78 ? "Sell soon" : model.sellScore >= 55 ? "Plan exit" : "Hold";
 
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(garage));
+    saveLocalGarage(garage);
     if (!cloudLoaded || !canCloudSync()) return;
     const timer = window.setTimeout(() => {
+      setSyncState("Saving");
       saveCloudGarage(garage).then(() => setSyncState("Synced")).catch(() => setSyncState("Sync error"));
     }, 450);
     return () => window.clearTimeout(timer);
@@ -337,9 +404,11 @@ function App() {
     fetchCloudGarage()
       .then((cloudGarage) => {
         if (!alive) return;
-        if (cloudGarage?.vehicles?.length) {
+        if (cloudGarage?.vehicles?.length && (!hasStoredGarage.current || isNewerGarage(cloudGarage, garage))) {
           setGarage(cloudGarage);
-          localStorage.setItem(storageKey, JSON.stringify(cloudGarage));
+          saveLocalGarage(cloudGarage);
+        } else if (garage?.vehicles?.length) {
+          saveCloudGarage(garage).catch(() => setSyncState("Sync error"));
         }
         setSyncState("Synced");
       })
@@ -354,20 +423,24 @@ function App() {
     };
   }, []);
 
+  function mutateGarage(updater) {
+    setGarage((current) => stampGarage(updater(current)));
+  }
+
   useEffect(() => {
     setScenarioKm(toNumber(vehicle.targetSellKilometers));
     setScenarioValue(Math.max(toNumber(vehicle.estimatedValue) - 3500, 0));
   }, [vehicle.id, vehicle.targetSellKilometers, vehicle.estimatedValue]);
 
   function updateVehicle(key, value) {
-    setGarage((current) => ({
+    mutateGarage((current) => ({
       ...current,
       vehicles: current.vehicles.map((item) => item.id === vehicle.id ? { ...item, [key]: value } : item),
     }));
   }
 
   function updateVehicleList(nextVehicle) {
-    setGarage((current) => ({
+    mutateGarage((current) => ({
       ...current,
       vehicles: current.vehicles.map((item) => item.id === nextVehicle.id ? nextVehicle : item),
     }));
@@ -408,8 +481,17 @@ function App() {
 
   function addVehicle() {
     const nextVehicle = createVehicle(garage.vehicles.length + 1);
-    setGarage((current) => ({ activeVehicleId: nextVehicle.id, vehicles: [...current.vehicles, nextVehicle] }));
+    mutateGarage((current) => ({ ...current, activeVehicleId: nextVehicle.id, vehicles: [...current.vehicles, nextVehicle] }));
     setActiveView("Garage");
+  }
+
+  async function importGarageBackup(files) {
+    const file = files?.[0];
+    if (!file) return;
+    const parsed = normalizeGarage(JSON.parse(await file.text()));
+    if (!parsed) return;
+    setGarage(stampGarage(parsed));
+    setSyncState(canCloudSync() ? "Saving" : "Local only");
   }
 
   const scenarioDistance = Math.max(toNumber(scenarioKm) - toNumber(vehicle.currentKilometers), 1);
@@ -432,7 +514,7 @@ function App() {
 
       <section className="garage-switcher" aria-label="Vehicles">
         {garage.vehicles.map((item) => (
-          <button key={item.id} className={item.id === vehicle.id ? "active" : ""} onClick={() => setGarage((current) => ({ ...current, activeVehicleId: item.id }))}>
+          <button key={item.id} className={item.id === vehicle.id ? "active" : ""} onClick={() => mutateGarage((current) => ({ ...current, activeVehicleId: item.id }))}>
             <strong>{item.name}</strong>
             <span>{formatKm(toNumber(item.currentKilometers))}</span>
           </button>
@@ -606,7 +688,18 @@ function App() {
 
           {activeView === "Garage" && (
             <>
-              <div className="section-title"><p>Recurring schedule</p><h2>Upcoming ownership costs</h2></div>
+              <div className="section-title"><p>Data safety</p><h2>Backups and sync</h2></div>
+              <div className="backup-panel">
+                <div>
+                  <strong>{syncState}</strong>
+                  <span>Last local save: {garage.updatedAt ? new Date(garage.updatedAt).toLocaleString() : "Unknown"}</span>
+                </div>
+                <button onClick={() => downloadGarageBackup(garage)}>Export backup</button>
+                <button className="ghost-button" onClick={() => importInput.current?.click()}>Import backup</button>
+                <input ref={importInput} type="file" accept="application/json,.json" hidden onChange={(event) => importGarageBackup(event.target.files)} />
+              </div>
+
+              <div className="section-title with-gap"><p>Recurring schedule</p><h2>Upcoming ownership costs</h2></div>
               <div className="schedule-list">
                 {(vehicle.recurring || []).map((item) => (
                   <article key={item.id}>
@@ -620,7 +713,7 @@ function App() {
                 {garage.vehicles.map((item) => (
                   <article key={item.id} className={item.id === vehicle.id ? "active" : ""}>
                     <div><strong>{item.name}</strong><small>{formatKm(toNumber(item.currentKilometers))} · {currency.format(toNumber(item.estimatedValue))}</small></div>
-                    <button onClick={() => setGarage((current) => ({ ...current, activeVehicleId: item.id }))}>Open</button>
+                    <button onClick={() => mutateGarage((current) => ({ ...current, activeVehicleId: item.id }))}>Open</button>
                   </article>
                 ))}
               </div>

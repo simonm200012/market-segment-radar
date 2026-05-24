@@ -560,6 +560,44 @@ textarea {
   background: #1f2933;
 }
 
+.backup-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #f7f8fa;
+}
+
+.backup-panel div {
+  display: grid;
+  gap: 4px;
+}
+
+.backup-panel strong {
+  font-size: 1.05rem;
+}
+
+.backup-panel span {
+  color: #697586;
+  font-size: 0.86rem;
+}
+
+.backup-panel button {
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 7px;
+  color: #fff;
+  background: #1f2933;
+}
+
+.backup-panel .ghost-button {
+  color: #52606d;
+  background: #fff;
+}
+
 .ghost-button {
   color: #52606d;
   border: 1px solid #d7dde4;
@@ -802,6 +840,7 @@ textarea {
   .sell-grid,
   .record-row,
   .review-row,
+  .backup-panel,
   .timeline-list article {
     grid-template-columns: 1fr;
   }
