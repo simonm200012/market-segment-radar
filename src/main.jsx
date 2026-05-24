@@ -615,7 +615,11 @@ function buildModel(vehicle) {
   const chargeTrend = monthlyEnergyTrend(chargeRows, "kWh");
   const monthlySpend = monthlySpendTrend(records);
   const anomalies = buildAnomalies({ monthlySpend, fuelTrend, chargeTrend, reserveTrend, vehicle, sellScore });
-  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend, monthlySpend, anomalies };
+  const latestMonth = monthlySpend.at(-1);
+  const previousMonth = monthlySpend.at(-2);
+  const monthlyDelta = latestMonth && previousMonth ? latestMonth.total - previousMonth.total : 0;
+  const upcomingRecurring = [...(vehicle.recurring || [])].sort((a, b) => new Date(a.nextDue) - new Date(b.nextDue));
+  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend, monthlySpend, anomalies, latestMonth, previousMonth, monthlyDelta, upcomingRecurring };
 }
 
 function App() {
@@ -909,13 +913,61 @@ function App() {
         <section className="panel main-panel">
           {activeView === "Overview" && (
             <>
-              <div className="section-title"><p>Overview mode</p><h2>Monthly spend and alerts</h2></div>
-              <div className="overview-grid">
-                <section>
+              <div className="section-title"><p>Overview mode</p><h2>What changed and what needs attention</h2></div>
+              <div className="insight-strip">
+                <article>
+                  <span>This month</span>
+                  <strong>{model.latestMonth ? currency.format(model.latestMonth.total) : "No spend"}</strong>
+                  <small>{model.latestMonth?.month || "Add records to start tracking"}</small>
+                </article>
+                <article>
+                  <span>Month change</span>
+                  <strong>{model.previousMonth ? `${model.monthlyDelta >= 0 ? "+" : ""}${currency.format(model.monthlyDelta)}` : "No baseline"}</strong>
+                  <small>{model.previousMonth ? `vs ${model.previousMonth.month}` : "Needs two months"}</small>
+                </article>
+                <article>
+                  <span>Top category</span>
+                  <strong>{model.categoriesBySpend[0]?.type || "None"}</strong>
+                  <small>{model.categoriesBySpend[0] ? currency.format(model.categoriesBySpend[0].total) : "No costs yet"}</small>
+                </article>
+                <article>
+                  <span>Next due</span>
+                  <strong>{model.upcomingRecurring[0]?.name || "None"}</strong>
+                  <small>{model.upcomingRecurring[0] ? `${model.upcomingRecurring[0].nextDue} · ${currency.format(toNumber(model.upcomingRecurring[0].amount))}` : "No recurring costs"}</small>
+                </article>
+              </div>
+              <div className="overview-grid enhanced">
+                <section className="overview-main">
                   <div className="section-title compact-title"><p>Monthly cost view</p><h2>Spend by month</h2></div>
                   {model.monthlySpend.length ? <MonthlySpendChart rows={model.monthlySpend} /> : <p className="empty-note">Add records to build a monthly spend view.</p>}
+                  <div className="overview-split">
+                    <section>
+                      <div className="section-title compact-title"><p>Categories</p><h2>Top spend</h2></div>
+                      <div className="compact-list">
+                        {model.categoriesBySpend.slice(0, 5).map((row) => (
+                          <article key={row.type}>
+                            <span style={{ background: categoryColors[row.type] || categoryColors.Other }} />
+                            <strong>{row.type}</strong>
+                            <b>{currency.format(row.total)}</b>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                    <section>
+                      <div className="section-title compact-title"><p>Activity</p><h2>Recent records</h2></div>
+                      <div className="compact-list activity-list">
+                        {model.sortedRecords.slice(0, 5).map((record) => (
+                          <article key={record.id}>
+                            <span className={`type-dot ${record.type.toLowerCase()}`} />
+                            <strong>{record.vendor || record.type}<small>{record.date} · {record.type}</small></strong>
+                            <b>{currencyExact.format(toNumber(record.amount))}</b>
+                          </article>
+                        ))}
+                      </div>
+                    </section>
+                  </div>
                 </section>
-                <section>
+                <section className="overview-rail">
                   <div className="section-title compact-title"><p>Anomaly alerts</p><h2>What needs attention</h2></div>
                   <div className="alert-list">
                     {model.anomalies.map((alert) => (
@@ -925,16 +977,16 @@ function App() {
                       </article>
                     ))}
                   </div>
+                  <div className="section-title compact-title with-gap"><p>Recurring costs</p><h2>Next payments</h2></div>
+                  <div className="schedule-list compact-schedule">
+                    {model.upcomingRecurring.slice(0, 4).map((item) => (
+                      <article key={item.id}>
+                        <div><strong>{item.name}</strong><small>{item.cadence} · next {item.nextDue}</small></div>
+                        <b>{currency.format(toNumber(item.amount))}</b>
+                      </article>
+                    ))}
+                  </div>
                 </section>
-              </div>
-              <div className="section-title with-gap"><p>Recurring costs</p><h2>Next payments</h2></div>
-              <div className="schedule-list">
-                {(vehicle.recurring || []).slice(0, 4).map((item) => (
-                  <article key={item.id}>
-                    <div><strong>{item.name}</strong><small>{item.cadence} · next {item.nextDue}</small></div>
-                    <b>{currency.format(toNumber(item.amount))}</b>
-                  </article>
-                ))}
               </div>
             </>
           )}

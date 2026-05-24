@@ -664,8 +664,91 @@ textarea {
   gap: 14px;
 }
 
+.overview-grid.enhanced {
+  align-items: start;
+}
+
 .overview-grid > section {
   min-width: 0;
+}
+
+.insight-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.insight-strip article {
+  min-height: 92px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 13px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.insight-strip span {
+  color: #697586;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.insight-strip strong {
+  font-size: 1.35rem;
+}
+
+.insight-strip small {
+  color: #697586;
+}
+
+.overview-split {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.overview-rail {
+  display: grid;
+  gap: 10px;
+}
+
+.compact-list {
+  display: grid;
+  gap: 8px;
+}
+
+.compact-list article {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.compact-list article > span {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.compact-list small {
+  display: block;
+  margin-top: 3px;
+  color: #697586;
+  font-weight: 500;
+}
+
+.compact-schedule article {
+  background: #fff;
 }
 
 .compact-title {
@@ -1202,6 +1285,8 @@ textarea {
 
   .dashboard-intro,
   .overview-grid,
+  .overview-split,
+  .insight-strip,
   .kpi-strip,
   .vehicle-grid,
   .form-pair,
