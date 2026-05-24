@@ -717,6 +717,13 @@ function App() {
     updateVehicleList({ ...vehicle, records: (vehicle.records || []).filter((record) => record.id !== id) });
   }
 
+  function updateRecord(id, key, value) {
+    updateVehicleList({
+      ...vehicle,
+      records: (vehicle.records || []).map((record) => record.id === id ? { ...record, [key]: value } : record),
+    });
+  }
+
   function approveReview(item) {
     const { confidence, ...record } = item;
     updateVehicleList({
@@ -965,7 +972,7 @@ function App() {
                       <th>Vendor</th>
                       <th>Details</th>
                       <th>Amount</th>
-                      <th />
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -976,7 +983,23 @@ function App() {
                         <td><strong>{record.vendor || record.type}</strong><small>{record.fileName}</small></td>
                         <td>{record.notes}<small>{record.odometer ? `${formatKm(toNumber(record.odometer))}` : ""}{record.liters ? ` · ${decimal.format(toNumber(record.liters))} L` : ""}{record.kwh ? ` · ${decimal.format(toNumber(record.kwh))} kWh` : ""}</small></td>
                         <td><b>{currencyExact.format(toNumber(record.amount))}</b></td>
-                        <td><button className="icon-button" type="button" aria-label={`Remove ${record.vendor || record.type}`} onClick={() => removeRecord(record.id)}>×</button></td>
+                        <td>
+                          <details className="row-menu record-menu">
+                            <summary aria-label={`Edit ${record.vendor || record.type}`}>Manage</summary>
+                            <div className="row-menu-body record-edit-menu">
+                              <label>Type<select value={record.type} onChange={(event) => updateRecord(record.id, "type", event.target.value)}>{categories.map((type) => <option key={type}>{type}</option>)}</select></label>
+                              <label>Vendor<input value={record.vendor || ""} onChange={(event) => updateRecord(record.id, "vendor", event.target.value)} /></label>
+                              <label>Date<input type="date" value={record.date || today} onChange={(event) => updateRecord(record.id, "date", event.target.value)} /></label>
+                              <label>Amount<input type="number" step="0.01" value={record.amount || ""} onChange={(event) => updateRecord(record.id, "amount", event.target.value)} /></label>
+                              <label>Odometer<input type="number" value={record.odometer || ""} onChange={(event) => updateRecord(record.id, "odometer", event.target.value)} /></label>
+                              <label>Litres<input type="number" step="0.01" value={record.liters || ""} onChange={(event) => updateRecord(record.id, "liters", event.target.value)} /></label>
+                              <label>kWh<input type="number" step="0.01" value={record.kwh || ""} onChange={(event) => updateRecord(record.id, "kwh", event.target.value)} /></label>
+                              <label>File<input value={record.fileName || ""} onChange={(event) => updateRecord(record.id, "fileName", event.target.value)} /></label>
+                              <label className="record-notes-field">Notes<textarea value={record.notes || ""} onChange={(event) => updateRecord(record.id, "notes", event.target.value)} /></label>
+                              <button className="danger-button" type="button" onClick={() => removeRecord(record.id)}>Remove</button>
+                            </div>
+                          </details>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
