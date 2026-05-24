@@ -420,36 +420,62 @@ function Bar({ label, value, max, color = "#2f7f72", detail }) {
 
 function MonthlySpendChart({ rows }) {
   const max = Math.max(...rows.map((row) => row.total), 1);
+  const peak = rows.reduce((highest, row) => (row.total > highest.total ? row : highest), rows[0] || { total: 0 });
+  const latest = rows[rows.length - 1];
   return (
     <div className="monthly-chart">
-      {rows.map((row) => (
-        <article key={row.month} title={`${row.month}: ${currencyExact.format(row.total)}`}>
-          <div className="monthly-stack" style={{ height: `${Math.max((row.total / max) * 100, 8)}%` }}>
-            {row.segments.map((segment) => (
-              <span
-                key={segment.type}
-                style={{
-                  height: `${Math.max((segment.total / row.total) * 100, 6)}%`,
-                  background: categoryColors[segment.type] || categoryColors.Other,
-                }}
-                title={`${segment.type}: ${currencyExact.format(segment.total)}`}
-              />
-            ))}
-          </div>
-          <strong>{currency.format(row.total)}</strong>
-          <small>{row.month}</small>
-        </article>
-      ))}
+      {rows.map((row, index) => {
+        const dominant = row.segments[0];
+        const previous = rows[index - 1];
+        const monthDelta = previous ? row.total - previous.total : 0;
+        const isLatest = latest?.month === row.month;
+        const isPeak = peak?.month === row.month && peak.total > 0;
+
+        return (
+          <article
+            key={row.month}
+            className={`${isLatest ? "is-latest" : ""} ${isPeak ? "is-peak" : ""}`.trim()}
+            title={`${row.month}: ${currencyExact.format(row.total)}`}
+          >
+            {isLatest ? <em>{monthDelta >= 0 ? "+" : ""}{currency.format(monthDelta)}</em> : null}
+            <div className="monthly-stack" style={{ height: `${Math.max((row.total / max) * 100, 8)}%` }}>
+              {row.segments.map((segment) => (
+                <span
+                  key={segment.type}
+                  style={{
+                    height: `${row.total ? Math.max((segment.total / row.total) * 100, 6) : 6}%`,
+                    background: categoryColors[segment.type] || categoryColors.Other,
+                  }}
+                  title={`${segment.type}: ${currencyExact.format(segment.total)}`}
+                />
+              ))}
+              {dominant ? (
+                <i>
+                  {dominant.type}
+                </i>
+              ) : null}
+            </div>
+            {isPeak ? <b>Peak</b> : null}
+            <strong>{currency.format(row.total)}</strong>
+            <small>{row.month}</small>
+          </article>
+        );
+      })}
     </div>
   );
 }
 
 function MiniTrend({ rows }) {
   const max = Math.max(...rows.map((row) => row.value), 1);
+  const latest = rows[rows.length - 1];
   return (
     <div className="mini-trend">
       {rows.map((row) => (
-        <div key={row.id} title={`${row.label}: ${row.detail}`}>
+        <div
+          key={row.id}
+          className={latest?.id === row.id ? "is-latest" : ""}
+          title={`${row.label}: ${row.detail}`}
+        >
           <span style={{ height: `${Math.max((row.value / max) * 100, 8)}%` }} />
           <small>{row.label}<b>{row.detail}</b></small>
         </div>

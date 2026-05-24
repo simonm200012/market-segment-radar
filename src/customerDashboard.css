@@ -1054,6 +1054,7 @@ textarea {
 }
 
 .monthly-chart {
+  position: relative;
   min-height: 260px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
@@ -1062,19 +1063,31 @@ textarea {
   padding: 14px;
   border: 1px solid #d7dde4;
   border-radius: 8px;
-  background: #f7f8fa;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(247, 248, 250, 0.94)),
+    repeating-linear-gradient(0deg, transparent 0, transparent 47px, rgba(105, 117, 134, 0.12) 48px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
 .monthly-chart article {
+  position: relative;
   min-height: 220px;
   display: grid;
   grid-template-rows: 1fr auto auto;
   align-items: end;
   gap: 6px;
   text-align: center;
+  border-radius: 8px;
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+.monthly-chart article:hover {
+  transform: translateY(-3px);
+  filter: drop-shadow(0 12px 18px rgba(15, 23, 42, 0.12));
 }
 
 .monthly-stack {
+  position: relative;
   width: 100%;
   min-height: 12px;
   display: flex;
@@ -1082,11 +1095,82 @@ textarea {
   overflow: hidden;
   border-radius: 7px 7px 0 0;
   background: #e4e9ee;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.08);
+  transition: height 220ms ease, box-shadow 160ms ease;
 }
 
 .monthly-stack span {
   display: block;
   min-height: 6px;
+  transition: filter 160ms ease;
+}
+
+.monthly-chart article:hover .monthly-stack {
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.12), 0 12px 24px rgba(15, 23, 42, 0.1);
+}
+
+.monthly-chart article:hover .monthly-stack span {
+  filter: saturate(1.12);
+}
+
+.monthly-stack i {
+  position: absolute;
+  left: 50%;
+  bottom: 9px;
+  max-width: calc(100% - 12px);
+  padding: 4px 6px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(17, 24, 39, 0.62);
+  font-size: 0.65rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  text-overflow: ellipsis;
+  transform: translateX(-50%) translateY(4px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  white-space: nowrap;
+}
+
+.monthly-chart article:hover .monthly-stack i,
+.monthly-chart article.is-latest .monthly-stack i {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.monthly-chart article em,
+.monthly-chart article > b {
+  justify-self: center;
+  padding: 4px 7px;
+  border: 1px solid rgba(31, 41, 51, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #52606d;
+  font-size: 0.65rem;
+  font-style: normal;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.monthly-chart article em {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  box-shadow: 0 8px 16px rgba(15, 23, 42, 0.1);
+}
+
+.monthly-chart article > b {
+  margin-top: -2px;
+  color: #2f7f72;
+}
+
+.monthly-chart article.is-latest .monthly-stack {
+  outline: 2px solid rgba(47, 127, 114, 0.28);
+  outline-offset: 3px;
 }
 
 .monthly-chart strong {
@@ -1519,6 +1603,7 @@ textarea {
 }
 
 .mini-trend {
+  position: relative;
   min-height: 190px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
@@ -1527,16 +1612,34 @@ textarea {
   padding: 14px;
   border: 1px solid #d7dde4;
   border-radius: 8px;
-  background: #f7f8fa;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(247, 248, 250, 0.96)),
+    repeating-linear-gradient(0deg, transparent 0, transparent 39px, rgba(105, 117, 134, 0.11) 40px);
+}
+
+.mini-trend::before {
+  content: "";
+  position: absolute;
+  right: 14px;
+  bottom: 68px;
+  left: 14px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(82, 96, 109, 0.28), transparent);
 }
 
 .mini-trend div {
+  position: relative;
   height: 150px;
   display: grid;
   grid-template-rows: 1fr auto;
   align-items: end;
   gap: 8px;
   text-align: center;
+  transition: transform 160ms ease;
+}
+
+.mini-trend div:hover {
+  transform: translateY(-3px);
 }
 
 .mini-trend div > span {
@@ -1544,6 +1647,31 @@ textarea {
   display: block;
   border-radius: 6px 6px 0 0;
   background: linear-gradient(180deg, #2f7f72, #31688e);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+  transition: height 220ms ease, filter 160ms ease, box-shadow 160ms ease;
+}
+
+.mini-trend div:hover > span,
+.mini-trend div.is-latest > span {
+  filter: saturate(1.16);
+  box-shadow: 0 12px 24px rgba(47, 127, 114, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.mini-trend div.is-latest::after {
+  content: "Latest";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  padding: 4px 7px;
+  border: 1px solid rgba(47, 127, 114, 0.18);
+  border-radius: 999px;
+  background: #fff;
+  color: #2f7f72;
+  font-size: 0.64rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  transform: translateX(-50%);
 }
 
 .mini-trend small {
