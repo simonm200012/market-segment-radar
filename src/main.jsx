@@ -381,6 +381,128 @@ function downloadGarageBackup(garage) {
   URL.revokeObjectURL(url);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (match) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#039;",
+  }[match]));
+}
+
+function fileExtension(fileName = "") {
+  return (fileName.split(".").pop() || "doc").slice(0, 4).toUpperCase();
+}
+
+function documentPreviewType(fileName = "") {
+  if (/\.(jpg|jpeg|png|webp|heic)$/i.test(fileName)) return "image";
+  if (/\.pdf$/i.test(fileName)) return "pdf";
+  if (/\.csv$/i.test(fileName)) return "csv";
+  return "doc";
+}
+
+function buildSetupSteps(vehicle, model, syncState) {
+  return [
+    {
+      title: "Vehicle profile",
+      detail: "Confirm purchase price, market value and current kilometers.",
+      complete: toNumber(vehicle.purchasePrice) > 0 && toNumber(vehicle.currentKilometers) > 0,
+      view: "Garage",
+    },
+    {
+      title: "Import ledger",
+      detail: "Bring in service, fuel, charge, insurance and registration history.",
+      complete: (vehicle.records || []).length >= 8,
+      view: "Records",
+    },
+    {
+      title: "Document vault",
+      detail: "Add insurance and registration files so the ownership file is complete.",
+      complete: model.documentCompleteness >= 100,
+      view: "Vault",
+    },
+    {
+      title: "Cloud sync",
+      detail: "Keep the garage available on every device.",
+      complete: syncState === "Synced",
+      view: "Garage",
+    },
+  ];
+}
+
+function exportOwnershipReport(vehicle, model) {
+  const generatedAt = new Date().toLocaleString("sl-SI");
+  const topCategories = model.categoriesBySpend.slice(0, 6);
+  const recentRecords = model.sortedRecords.slice(0, 12);
+  const requiredDocs = model.documentVault.documents.filter((doc) => ["Insurance", "Registration"].includes(doc.type));
+  const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(vehicle.name)} ownership report</title>
+  <style>
+    body { margin: 0; padding: 40px; color: #1f2933; background: #f4f6f8; font-family: Inter, Arial, sans-serif; }
+    main { max-width: 980px; margin: auto; background: #fff; border: 1px solid #d7dde4; border-radius: 14px; overflow: hidden; }
+    header { padding: 34px; color: #fff; background: #17231f; }
+    p { color: #697586; line-height: 1.5; }
+    header p { color: rgba(255, 255, 255, 0.72); }
+    h1 { margin: 0 0 10px; font-size: 42px; line-height: 1; }
+    h2 { margin: 0 0 14px; font-size: 18px; }
+    section { padding: 26px 34px; border-top: 1px solid #e5e8ec; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+    .card { padding: 15px; border: 1px solid #d7dde4; border-radius: 10px; }
+    .card span, th { color: #697586; font-size: 11px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+    .card strong { display: block; margin-top: 8px; font-size: 24px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #edf0f3; text-align: left; }
+    .pill { display: inline-block; padding: 5px 8px; border-radius: 999px; background: #eef5f3; color: #2f7f72; font-weight: 800; }
+    @media print { body { padding: 0; background: #fff; } main { border: 0; border-radius: 0; } }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <p>Garage Ledger ownership report · ${escapeHtml(generatedAt)}</p>
+      <h1>${escapeHtml(vehicle.name)}</h1>
+      <p>${escapeHtml(formatKm(toNumber(vehicle.currentKilometers)))} · ${escapeHtml(currencyExact.format(model.costPerKm))}/km · ${escapeHtml(currency.format(model.totalCost))} total ownership cost</p>
+    </header>
+    <section class="grid">
+      <article class="card"><span>Total cost</span><strong>${escapeHtml(currency.format(model.totalCost))}</strong></article>
+      <article class="card"><span>Cost per km</span><strong>${escapeHtml(currencyExact.format(model.costPerKm))}</strong></article>
+      <article class="card"><span>Monthly burn</span><strong>${escapeHtml(currency.format(model.monthlyCost))}</strong></article>
+      <article class="card"><span>Sell score</span><strong>${escapeHtml(model.sellScore)}</strong></article>
+    </section>
+    <section>
+      <h2>Ownership summary</h2>
+      <p>Cash spend is ${escapeHtml(currency.format(model.directSpend))}, depreciation is ${escapeHtml(currency.format(model.depreciation))}, and document completeness is ${escapeHtml(model.documentCompleteness)}%.</p>
+    </section>
+    <section>
+      <h2>Top cost categories</h2>
+      <table><tbody>${topCategories.map((row) => `<tr><td><span class="pill">${escapeHtml(row.type)}</span></td><td>${escapeHtml(currency.format(row.total))}</td><td>${escapeHtml(currencyExact.format(row.total / Math.max(model.kilometersOwned, 1)))}/km</td></tr>`).join("")}</tbody></table>
+    </section>
+    <section>
+      <h2>Required documents</h2>
+      <table><tbody>${requiredDocs.map((doc) => `<tr><td>${escapeHtml(doc.type)}</td><td>${escapeHtml(doc.title)}</td><td>${escapeHtml(doc.status)}</td><td>${escapeHtml(doc.nextDue || doc.date || "")}</td></tr>`).join("")}</tbody></table>
+    </section>
+    <section>
+      <h2>Recent records</h2>
+      <table><thead><tr><th>Date</th><th>Type</th><th>Vendor</th><th>Amount</th></tr></thead><tbody>${recentRecords.map((record) => `<tr><td>${escapeHtml(record.date)}</td><td>${escapeHtml(record.type)}</td><td>${escapeHtml(record.vendor || record.fileName)}</td><td>${escapeHtml(currencyExact.format(toNumber(record.amount)))}</td></tr>`).join("")}</tbody></table>
+    </section>
+  </main>
+</body>
+</html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${vehicle.name.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase()}-ownership-report.html`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function Stat({ label, value, sub, tone = "" }) {
   return (
     <article className={`stat ${tone}`}>
@@ -740,6 +862,9 @@ function App() {
   const model = useMemo(() => buildModel(vehicle), [vehicle]);
   const selectedRecord = (vehicle.records || []).find((record) => record.id === selectedRecordId);
   const sellState = model.sellScore >= 78 ? "Sell soon" : model.sellScore >= 55 ? "Plan exit" : "Hold";
+  const setupSteps = buildSetupSteps(vehicle, model, syncState);
+  const setupComplete = setupSteps.filter((step) => step.complete).length;
+  const nextSetupStep = setupSteps.find((step) => !step.complete);
   const filteredRecords = model.sortedRecords.filter((record) => {
     const typeMatch = recordTypeFilter === "All" || record.type === recordTypeFilter;
     const search = recordSearch.trim().toLowerCase();
@@ -943,6 +1068,8 @@ function App() {
               <button type="button" onClick={() => { setActiveView("Records"); fileInput.current?.click(); }}>Upload document</button>
               <button type="button" onClick={() => setActiveView("Records")}>Add record</button>
               <button type="button" onClick={() => setActiveView("Garage")}>Add recurring cost</button>
+              <button type="button" onClick={() => exportOwnershipReport(vehicle, model)}>Export report</button>
+              <button type="button" onClick={() => downloadGarageBackup(garage)}>Download backup</button>
               <button type="button" onClick={addVehicle}>Add vehicle</button>
             </div>
           </details>
@@ -1034,6 +1161,45 @@ function App() {
           {activeView === "Overview" && (
             <>
               <div className="section-title"><p>Overview mode</p><h2>What changed and what needs attention</h2></div>
+              {setupComplete < setupSteps.length ? (
+                <section className="setup-wizard">
+                  <div className="setup-wizard-head">
+                    <div>
+                      <p>Setup guide</p>
+                      <h2>{nextSetupStep?.title}</h2>
+                      <span>{nextSetupStep?.detail}</span>
+                    </div>
+                    <button type="button" onClick={() => setActiveView(nextSetupStep?.view || "Records")}>Continue</button>
+                  </div>
+                  <div className="setup-progress" style={{ "--progress": `${(setupComplete / setupSteps.length) * 100}%` }}>
+                    <span />
+                  </div>
+                  <div className="setup-steps">
+                    {setupSteps.map((step) => (
+                      <button
+                        key={step.title}
+                        type="button"
+                        className={step.complete ? "complete" : ""}
+                        onClick={() => setActiveView(step.view)}
+                      >
+                        <i>{step.complete ? "✓" : setupSteps.indexOf(step) + 1}</i>
+                        <strong>{step.title}</strong>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              ) : (
+                <section className="setup-wizard complete">
+                  <div className="setup-wizard-head">
+                    <div>
+                      <p>Setup complete</p>
+                      <h2>Your garage is report-ready</h2>
+                      <span>Everything needed for tracking, documents and cloud sync is in place.</span>
+                    </div>
+                    <button type="button" onClick={() => exportOwnershipReport(vehicle, model)}>Export report</button>
+                  </div>
+                </section>
+              )}
               <section className="next-action-panel">
                 <div>
                   <p>Next best action</p>
@@ -1198,20 +1364,27 @@ function App() {
                 <article><span>Missing</span><strong>{integer.format(model.documentVault.counts.missing || 0)}</strong></article>
               </div>
               <div className="vault-grid">
-                {model.documentVault.documents.map((doc) => (
-                  <article key={doc.id} className={`vault-card ${doc.status.replace(/\s/g, "-")}`}>
-                    <div className="vault-card-head">
-                      <span className={`type-pill ${doc.type.toLowerCase()}`}>{doc.type}</span>
-                      <b>{doc.status}</b>
-                    </div>
-                    <strong>{doc.title}</strong>
-                    <small>{doc.vendor}{doc.date ? ` · ${doc.date}` : ""}{doc.nextDue ? ` · due ${doc.nextDue}` : ""}</small>
-                    <p>{doc.record?.notes || (doc.status === "missing" ? "Add or import this document to complete the vehicle file." : "Stored from ledger record.")}</p>
-                    <div className="vault-card-actions">
-                      {doc.record ? <button type="button" onClick={() => { setSelectedRecordId(doc.record.id); setActiveView("Records"); }}>Open record</button> : <button type="button" onClick={() => setActiveView("Records")}>Add record</button>}
-                    </div>
-                  </article>
-                ))}
+                {model.documentVault.documents.map((doc) => {
+                  const previewType = documentPreviewType(doc.title);
+                  return (
+                    <article key={doc.id} className={`vault-card ${doc.status.replace(/\s/g, "-")}`}>
+                      <div className={`vault-preview ${previewType}`}>
+                        <span>{doc.status === "missing" ? "Need" : fileExtension(doc.title)}</span>
+                        <b>{doc.type}</b>
+                      </div>
+                      <div className="vault-card-head">
+                        <span className={`type-pill ${doc.type.toLowerCase()}`}>{doc.type}</span>
+                        <b>{doc.status}</b>
+                      </div>
+                      <strong>{doc.title}</strong>
+                      <small>{doc.vendor}{doc.date ? ` · ${doc.date}` : ""}{doc.nextDue ? ` · due ${doc.nextDue}` : ""}</small>
+                      <p>{doc.record?.notes || (doc.status === "missing" ? "Add or import this document to complete the vehicle file." : "Stored from ledger record.")}</p>
+                      <div className="vault-card-actions">
+                        {doc.record ? <button type="button" onClick={() => { setSelectedRecordId(doc.record.id); setActiveView("Records"); }}>Open record</button> : <button type="button" onClick={() => { setActiveView("Records"); fileInput.current?.click(); }}>Upload file</button>}
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             </>
           )}
