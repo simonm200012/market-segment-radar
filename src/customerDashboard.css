@@ -98,7 +98,7 @@ h2 {
 
 .topbar nav {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(7, 1fr);
   padding: 3px;
   gap: 3px;
   border: 1px solid #d7dde4;
@@ -107,7 +107,7 @@ h2 {
 }
 
 .topbar nav button {
-  min-width: 78px;
+  min-width: 72px;
   padding: 9px 12px;
   border-radius: 6px;
   color: #52606d;
@@ -764,6 +764,96 @@ textarea {
   background: #fff;
 }
 
+.vault-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.vault-summary article {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.vault-summary span {
+  color: #697586;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.vault-summary strong {
+  font-size: 1.45rem;
+}
+
+.vault-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+}
+
+.vault-card {
+  display: grid;
+  gap: 10px;
+  min-height: 190px;
+  padding: 14px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.vault-card.missing {
+  border-color: #e5b8ae;
+  background: #fff7f5;
+}
+
+.vault-card.expiring-soon {
+  border-color: #e8d5a7;
+  background: #fffaf0;
+}
+
+.vault-card.valid {
+  border-color: #b7d7cf;
+  background: #f5fbf9;
+}
+
+.vault-card-head,
+.vault-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.vault-card-head b {
+  color: #52606d;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.68rem;
+}
+
+.vault-card small,
+.vault-card p {
+  color: #697586;
+  line-height: 1.45;
+}
+
+.vault-card-actions button {
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid #d7dde4;
+  border-radius: 7px;
+  color: #52606d;
+  background: #fff;
+  font-weight: 800;
+}
+
 .compact-title {
   margin-bottom: 10px;
 }
@@ -1392,6 +1482,7 @@ textarea {
   .overview-grid,
   .overview-split,
   .insight-strip,
+  .vault-summary,
   .kpi-strip,
   .vehicle-grid,
   .form-pair,

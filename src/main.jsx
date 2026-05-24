@@ -16,7 +16,7 @@ const syncConfig = {
   id: import.meta.env.VITE_GARAGE_SYNC_ID || "default-garage",
 };
 const categories = ["Service", "Fuel", "Charge", "Insurance", "Registration", "Tires", "Repairs", "Parking", "Loan", "Other"];
-const views = ["Overview", "Records", "Costs", "Timeline", "Sell prep", "Garage"];
+const views = ["Overview", "Records", "Vault", "Costs", "Timeline", "Sell prep", "Garage"];
 const categoryColors = {
   Service: "#2f7f72",
   Fuel: "#c2653a",
@@ -564,6 +564,50 @@ function buildAnomalies({ monthlySpend, fuelTrend, chargeTrend, reserveTrend, ve
   return alerts;
 }
 
+function buildDocumentVault(records, recurring) {
+  const required = ["Insurance", "Registration"];
+  const docs = records
+    .filter((record) => record.fileName)
+    .map((record) => {
+      const recurringItem = recurring.find((item) => item.name.toLowerCase().includes(record.type.toLowerCase()));
+      const daysUntilDue = recurringItem?.nextDue ? Math.ceil((new Date(recurringItem.nextDue) - new Date(today)) / 86400000) : null;
+      const status = daysUntilDue !== null && daysUntilDue < 0 ? "expired" : daysUntilDue !== null && daysUntilDue <= 45 ? "expiring soon" : ["Insurance", "Registration"].includes(record.type) ? "valid" : "filed";
+      return {
+        id: record.id,
+        type: record.type,
+        title: record.fileName,
+        vendor: record.vendor || record.type,
+        date: record.date,
+        amount: toNumber(record.amount),
+        status,
+        nextDue: recurringItem?.nextDue || "",
+        record,
+      };
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const missing = required
+    .filter((type) => !docs.some((doc) => doc.type === type))
+    .map((type) => ({
+      id: `missing-${type}`,
+      type,
+      title: `${type} document`,
+      vendor: "Missing",
+      date: "",
+      amount: 0,
+      status: "missing",
+      nextDue: recurring.find((item) => item.name.toLowerCase().includes(type.toLowerCase()))?.nextDue || "",
+      record: null,
+    }));
+
+  const counts = [...docs, ...missing].reduce((acc, doc) => {
+    acc[doc.status] = (acc[doc.status] || 0) + 1;
+    return acc;
+  }, {});
+
+  return { documents: [...missing, ...docs], counts };
+}
+
 function buildModel(vehicle) {
   const records = vehicle.records || [];
   const kilometersOwned = Math.max(toNumber(vehicle.currentKilometers) - toNumber(vehicle.purchaseKilometers), 1);
@@ -615,11 +659,12 @@ function buildModel(vehicle) {
   const chargeTrend = monthlyEnergyTrend(chargeRows, "kWh");
   const monthlySpend = monthlySpendTrend(records);
   const anomalies = buildAnomalies({ monthlySpend, fuelTrend, chargeTrend, reserveTrend, vehicle, sellScore });
+  const documentVault = buildDocumentVault(records, vehicle.recurring || []);
   const latestMonth = monthlySpend.at(-1);
   const previousMonth = monthlySpend.at(-2);
   const monthlyDelta = latestMonth && previousMonth ? latestMonth.total - previousMonth.total : 0;
   const upcomingRecurring = [...(vehicle.recurring || [])].sort((a, b) => new Date(a.nextDue) - new Date(b.nextDue));
-  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend, monthlySpend, anomalies, latestMonth, previousMonth, monthlyDelta, upcomingRecurring };
+  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend, monthlySpend, anomalies, documentVault, latestMonth, previousMonth, monthlyDelta, upcomingRecurring };
 }
 
 function App() {
@@ -1047,6 +1092,34 @@ function App() {
                   </tbody>
                 </table>
                 {!filteredRecords.length ? <p className="empty-note">No records match the current filters.</p> : null}
+              </div>
+            </>
+          )}
+
+          {activeView === "Vault" && (
+            <>
+              <div className="section-title"><p>Document vault</p><h2>Vehicle files and required documents</h2></div>
+              <div className="vault-summary">
+                <article><span>Total files</span><strong>{integer.format(model.documentVault.documents.filter((doc) => doc.status !== "missing").length)}</strong></article>
+                <article><span>Valid</span><strong>{integer.format(model.documentVault.counts.valid || 0)}</strong></article>
+                <article><span>Expiring soon</span><strong>{integer.format(model.documentVault.counts["expiring soon"] || 0)}</strong></article>
+                <article><span>Missing</span><strong>{integer.format(model.documentVault.counts.missing || 0)}</strong></article>
+              </div>
+              <div className="vault-grid">
+                {model.documentVault.documents.map((doc) => (
+                  <article key={doc.id} className={`vault-card ${doc.status.replace(/\s/g, "-")}`}>
+                    <div className="vault-card-head">
+                      <span className={`type-pill ${doc.type.toLowerCase()}`}>{doc.type}</span>
+                      <b>{doc.status}</b>
+                    </div>
+                    <strong>{doc.title}</strong>
+                    <small>{doc.vendor}{doc.date ? ` · ${doc.date}` : ""}{doc.nextDue ? ` · due ${doc.nextDue}` : ""}</small>
+                    <p>{doc.record?.notes || (doc.status === "missing" ? "Add or import this document to complete the vehicle file." : "Stored from ledger record.")}</p>
+                    <div className="vault-card-actions">
+                      {doc.record ? <button type="button" onClick={() => { setSelectedRecordId(doc.record.id); setActiveView("Records"); }}>Open record</button> : <button type="button" onClick={() => setActiveView("Records")}>Add record</button>}
+                    </div>
+                  </article>
+                ))}
               </div>
             </>
           )}
