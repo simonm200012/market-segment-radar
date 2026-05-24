@@ -485,6 +485,8 @@ function App() {
   const [scenarioKm, setScenarioKm] = useState(132000);
   const [scenarioValue, setScenarioValue] = useState(22000);
   const [importMessage, setImportMessage] = useState("");
+  const [recordTypeFilter, setRecordTypeFilter] = useState("All");
+  const [recordSearch, setRecordSearch] = useState("");
   const fileInput = useRef(null);
   const importInput = useRef(null);
   const hasStoredGarage = useRef(typeof localStorage !== "undefined" && Boolean(localStorage.getItem(storageKey)));
@@ -492,6 +494,12 @@ function App() {
   const vehicle = garage.vehicles.find((item) => item.id === garage.activeVehicleId) || garage.vehicles[0];
   const model = useMemo(() => buildModel(vehicle), [vehicle]);
   const sellState = model.sellScore >= 78 ? "Sell soon" : model.sellScore >= 55 ? "Plan exit" : "Hold";
+  const filteredRecords = model.sortedRecords.filter((record) => {
+    const typeMatch = recordTypeFilter === "All" || record.type === recordTypeFilter;
+    const search = recordSearch.trim().toLowerCase();
+    const searchMatch = !search || `${record.vendor} ${record.notes} ${record.fileName}`.toLowerCase().includes(search);
+    return typeMatch && searchMatch;
+  });
 
   useEffect(() => {
     saveLocalGarage(garage);
@@ -651,37 +659,34 @@ function App() {
       </section>
 
       <section className="hero-panel">
-        <div className="vehicle-card">
-          <div className="panel-head">
-            <div>
-              <p>Vehicle profile</p>
-              <h2>Ownership assumptions</h2>
-            </div>
-            <span>{formatKm(toNumber(vehicle.currentKilometers))}</span>
+        <div className="decision-card">
+          <div>
+            <p>Ownership decision</p>
+            <h2>{sellState}</h2>
+            <span>{model.sellScore >= 78 ? "Sale preparation should be active." : model.sellScore >= 55 ? "Keep driving, but prepare the exit packet." : "Costs are still inside a reasonable hold range."}</span>
           </div>
-          <label className="vehicle-name">Vehicle<input value={vehicle.name} onChange={(event) => updateVehicle("name", event.target.value)} /></label>
-          <div className="vehicle-grid">
-            <label>Current km<input type="number" value={vehicle.currentKilometers} onChange={(event) => updateVehicle("currentKilometers", event.target.value)} /></label>
-            <label>Market value, EUR<input type="number" value={vehicle.estimatedValue} onChange={(event) => updateVehicle("estimatedValue", event.target.value)} /></label>
-            <label>Sell target km<input type="number" value={vehicle.targetSellKilometers} onChange={(event) => updateVehicle("targetSellKilometers", event.target.value)} /></label>
-            <label>Annual km<input type="number" value={vehicle.annualKilometers} onChange={(event) => updateVehicle("annualKilometers", event.target.value)} /></label>
-            <label>Purchase price, EUR<input type="number" value={vehicle.purchasePrice} onChange={(event) => updateVehicle("purchasePrice", event.target.value)} /></label>
-            <label>Purchase km<input type="number" value={vehicle.purchaseKilometers} onChange={(event) => updateVehicle("purchaseKilometers", event.target.value)} /></label>
+          <div className="score-dial" style={{ "--score": `${model.sellScore * 3.6}deg` }}>
+            <strong>{model.sellScore}</strong>
+            <small>score</small>
           </div>
+        </div>
+        <div className="hero-metrics">
+          <Stat label="Cost per km" value={currencyExact.format(model.costPerKm)} sub={`${formatKm(model.kilometersOwned)} owned`} tone="primary" />
+          <Stat label="Total cost" value={currency.format(model.totalCost)} sub={`${currency.format(model.directSpend)} cash + ${currency.format(model.depreciation)} depreciation`} />
+          <Stat label="Monthly burn" value={currency.format(model.monthlyCost)} sub="Ownership cost normalized by time" />
         </div>
         <div className="sell-card">
           <div className="panel-head compact">
             <div>
-              <p>Recommendation</p>
-              <h2>{sellState}</h2>
+              <p>Exit watch</p>
+              <h2>{model.sellInMonths ? `${model.sellInMonths} mo` : "Now"}</h2>
             </div>
-            <span>{model.sellScore}/100</span>
+            <span>{formatKm(toNumber(vehicle.currentKilometers))}</span>
           </div>
-          <div className="score-rail"><span style={{ width: `${model.sellScore}%` }} /></div>
           <div className="recommendation-list">
-            <div><span>Timing</span><strong>{model.sellInMonths ? `${model.sellInMonths} months` : "Now"}</strong></div>
             <div><span>Next service</span><strong>{model.nextHeavyService}</strong></div>
             <div><span>Depreciation</span><strong>{currency.format(model.depreciation)}</strong></div>
+            <div><span>Energy</span><strong>{model.avgChargePrice ? `${currencyExact.format(model.avgChargePrice)}/kWh` : (model.avgFuelPrice ? `${currencyExact.format(model.avgFuelPrice)}/L` : "No data")}</strong></div>
           </div>
         </div>
       </section>
@@ -694,9 +699,9 @@ function App() {
       </section>
 
       <section className="stats-grid">
-        <Stat label="Total cost" value={currency.format(model.totalCost)} sub={`${currency.format(model.directSpend)} cash + ${currency.format(model.depreciation)} depreciation`} />
-        <Stat label="Cost per km" value={currencyExact.format(model.costPerKm)} sub={`${formatKm(model.kilometersOwned)} owned`} tone="primary" />
-        <Stat label="Monthly burn" value={currency.format(model.monthlyCost)} sub="Ownership cost normalized by time" />
+        <Stat label="Cash spend" value={currency.format(model.directSpend)} sub="Ledger items only" />
+        <Stat label="Depreciation" value={currency.format(model.depreciation)} sub="Purchase value minus market value" />
+        <Stat label="Recurring 12 mo" value={currency.format(model.recurring12)} sub="Insurance, registration, parking, reserves" />
         <Stat
           label="Energy average"
           value={model.avgChargePrice ? `${currencyExact.format(model.avgChargePrice)}/kWh` : (model.avgFuelPrice ? `${currencyExact.format(model.avgFuelPrice)}/L` : "0,00 €")}
@@ -706,6 +711,26 @@ function App() {
 
       <section className="workbench">
         <aside className="panel upload-panel">
+          <div className="section-title">
+            <p>Vehicle filters</p>
+            <h2>Assumptions</h2>
+          </div>
+          <div className="settings-panel">
+            <label className="vehicle-name">Vehicle<input value={vehicle.name} onChange={(event) => updateVehicle("name", event.target.value)} /></label>
+            <div className="form-pair">
+              <label>Current km<input type="number" value={vehicle.currentKilometers} onChange={(event) => updateVehicle("currentKilometers", event.target.value)} /></label>
+              <label>Annual km<input type="number" value={vehicle.annualKilometers} onChange={(event) => updateVehicle("annualKilometers", event.target.value)} /></label>
+            </div>
+            <div className="form-pair">
+              <label>Purchase price<input type="number" value={vehicle.purchasePrice} onChange={(event) => updateVehicle("purchasePrice", event.target.value)} /></label>
+              <label>Purchase km<input type="number" value={vehicle.purchaseKilometers} onChange={(event) => updateVehicle("purchaseKilometers", event.target.value)} /></label>
+            </div>
+            <div className="form-pair">
+              <label>Market value<input type="number" value={vehicle.estimatedValue} onChange={(event) => updateVehicle("estimatedValue", event.target.value)} /></label>
+              <label>Sell target km<input type="number" value={vehicle.targetSellKilometers} onChange={(event) => updateVehicle("targetSellKilometers", event.target.value)} /></label>
+            </div>
+          </div>
+
           <div className="section-title">
             <p>Capture</p>
             <h2>Upload and manual entry</h2>
@@ -751,8 +776,16 @@ function App() {
               </div>
 
               <div className="section-title with-gap"><p>Ledger</p><h2>Ownership documents and costs</h2></div>
+              <div className="ledger-toolbar">
+                <label>Type<select value={recordTypeFilter} onChange={(event) => setRecordTypeFilter(event.target.value)}>
+                  <option>All</option>
+                  {categories.map((type) => <option key={type}>{type}</option>)}
+                </select></label>
+                <label>Search<input value={recordSearch} onChange={(event) => setRecordSearch(event.target.value)} placeholder="Vendor, note, file" /></label>
+                <span>{integer.format(filteredRecords.length)} shown</span>
+              </div>
               <div className="record-list">
-                {model.sortedRecords.map((record) => (
+                {filteredRecords.map((record) => (
                   <article className="record-row" key={record.id}>
                     <span className={`type-dot ${record.type.toLowerCase()}`} />
                     <div><strong>{record.vendor || record.type}</strong><small>{record.date} · {record.fileName}</small></div>
@@ -761,6 +794,7 @@ function App() {
                     <button className="icon-button" type="button" aria-label={`Remove ${record.vendor || record.type}`} onClick={() => removeRecord(record.id)}>×</button>
                   </article>
                 ))}
+                {!filteredRecords.length ? <p className="empty-note">No records match the current filters.</p> : null}
               </div>
             </>
           )}

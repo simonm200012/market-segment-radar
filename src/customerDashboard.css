@@ -142,11 +142,13 @@ h2 {
 
 .hero-panel {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
+  grid-template-columns: 1.1fr 1.4fr 360px;
   gap: 14px;
+  align-items: stretch;
 }
 
 .vehicle-card,
+.decision-card,
 .sell-card,
 .stat,
 .panel {
@@ -157,11 +159,85 @@ h2 {
 }
 
 .vehicle-card,
+.decision-card,
 .sell-card {
   display: grid;
   align-content: start;
   gap: 16px;
   padding: 18px;
+}
+
+.decision-card {
+  min-height: 250px;
+  align-content: space-between;
+  color: #fff;
+  background: #17201d;
+  border-color: #17201d;
+}
+
+.decision-card p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.62);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.decision-card h2 {
+  margin-top: 8px;
+  font-size: clamp(2.2rem, 4vw, 4.4rem);
+  line-height: 0.92;
+}
+
+.decision-card div > span {
+  display: block;
+  max-width: 360px;
+  margin-top: 12px;
+  color: rgba(255, 255, 255, 0.68);
+  line-height: 1.45;
+}
+
+.score-dial {
+  width: 126px;
+  height: 126px;
+  display: grid;
+  place-items: center;
+  justify-self: end;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, #17201d 0 56%, transparent 57%),
+    conic-gradient(#68b39f var(--score), rgba(255, 255, 255, 0.13) 0);
+}
+
+.score-dial strong,
+.score-dial small {
+  grid-area: 1 / 1;
+}
+
+.score-dial strong {
+  margin-top: -10px;
+  font-size: 2.35rem;
+  line-height: 1;
+}
+
+.score-dial small {
+  align-self: end;
+  margin-bottom: 28px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hero-metrics .stat {
+  min-height: 250px;
 }
 
 .panel-head {
@@ -237,7 +313,8 @@ textarea {
 .stats-grid,
 .form-pair,
 .cost-layout,
-.sell-grid {
+.sell-grid,
+.ledger-toolbar {
   display: grid;
   gap: 12px;
 }
@@ -268,11 +345,6 @@ textarea {
   overflow: hidden;
   border-radius: 999px;
   background: rgba(31, 41, 51, 0.1);
-}
-
-.sell-card .score-rail {
-  height: 10px;
-  background: rgba(255, 255, 255, 0.16);
 }
 
 .score-rail span,
@@ -396,6 +468,14 @@ textarea {
   font-size: 1.15rem;
 }
 
+.settings-panel {
+  display: grid;
+  gap: 11px;
+  margin-bottom: 22px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #d7dde4;
+}
+
 .upload-zone {
   width: 100%;
   min-height: 132px;
@@ -465,6 +545,28 @@ textarea {
 .timeline-list {
   display: grid;
   gap: 8px;
+}
+
+.ledger-toolbar {
+  grid-template-columns: 170px minmax(180px, 1fr) auto;
+  align-items: end;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #f7f8fa;
+}
+
+.ledger-toolbar span {
+  min-height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0 12px;
+  border-radius: 7px;
+  color: #52606d;
+  background: #fff;
+  font-size: 0.82rem;
+  font-weight: 800;
 }
 
 .record-row,
@@ -812,6 +914,7 @@ textarea {
 
 @media (max-width: 980px) {
   .hero-panel,
+  .hero-metrics,
   .stats-grid,
   .status-strip,
   .workbench,
@@ -844,10 +947,12 @@ textarea {
   }
 
   .hero-panel,
+  .hero-metrics,
   .vehicle-grid,
   .status-strip,
   .stats-grid,
   .form-pair,
+  .ledger-toolbar,
   .sell-grid,
   .record-row,
   .review-row,
@@ -857,8 +962,34 @@ textarea {
   }
 
   .vehicle-card,
+  .decision-card,
   .panel {
     padding: 15px;
+  }
+
+  .hero-metrics .stat,
+  .decision-card,
+  .sell-card {
+    min-height: auto;
+  }
+
+  .decision-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .score-dial {
+    width: 94px;
+    height: 94px;
+  }
+
+  .score-dial strong {
+    font-size: 1.8rem;
+  }
+
+  .score-dial small {
+    margin-bottom: 18px;
+    font-size: 0.62rem;
   }
 
   .record-row {
