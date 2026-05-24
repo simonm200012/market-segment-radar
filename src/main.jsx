@@ -16,7 +16,19 @@ const syncConfig = {
   id: import.meta.env.VITE_GARAGE_SYNC_ID || "default-garage",
 };
 const categories = ["Service", "Fuel", "Charge", "Insurance", "Registration", "Tires", "Repairs", "Parking", "Loan", "Other"];
-const views = ["Records", "Costs", "Timeline", "Sell", "Garage"];
+const views = ["Overview", "Records", "Costs", "Timeline", "Sell prep", "Garage"];
+const categoryColors = {
+  Service: "#2f7f72",
+  Fuel: "#c2653a",
+  Charge: "#7c3aed",
+  Insurance: "#31688e",
+  Registration: "#8d6b2f",
+  Tires: "#665f73",
+  Repairs: "#b64d3d",
+  Parking: "#4f7c8a",
+  Loan: "#252b2f",
+  Other: "#8a94a6",
+};
 
 const servicePlan = [
   { km: 30000, label: "Oil and cabin filters" },
@@ -392,6 +404,32 @@ function Bar({ label, value, max, color = "#2f7f72", detail }) {
   );
 }
 
+function MonthlySpendChart({ rows }) {
+  const max = Math.max(...rows.map((row) => row.total), 1);
+  return (
+    <div className="monthly-chart">
+      {rows.map((row) => (
+        <article key={row.month} title={`${row.month}: ${currencyExact.format(row.total)}`}>
+          <div className="monthly-stack" style={{ height: `${Math.max((row.total / max) * 100, 8)}%` }}>
+            {row.segments.map((segment) => (
+              <span
+                key={segment.type}
+                style={{
+                  height: `${Math.max((segment.total / row.total) * 100, 6)}%`,
+                  background: categoryColors[segment.type] || categoryColors.Other,
+                }}
+                title={`${segment.type}: ${currencyExact.format(segment.total)}`}
+              />
+            ))}
+          </div>
+          <strong>{currency.format(row.total)}</strong>
+          <small>{row.month}</small>
+        </article>
+      ))}
+    </div>
+  );
+}
+
 function MiniTrend({ rows }) {
   const max = Math.max(...rows.map((row) => row.value), 1);
   return (
@@ -404,6 +442,27 @@ function MiniTrend({ rows }) {
       ))}
     </div>
   );
+}
+
+function monthlySpendTrend(records) {
+  const months = records.reduce((acc, record) => {
+    const month = (record.date || today).slice(0, 7);
+    const bucket = acc.get(month) || { month, total: 0, byType: {} };
+    const amount = toNumber(record.amount);
+    bucket.total += amount;
+    bucket.byType[record.type] = (bucket.byType[record.type] || 0) + amount;
+    acc.set(month, bucket);
+    return acc;
+  }, new Map());
+
+  return [...months.values()]
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map((month) => ({
+      ...month,
+      segments: Object.entries(month.byType)
+        .map(([type, total]) => ({ type, total }))
+        .sort((a, b) => b.total - a.total),
+    }));
 }
 
 function monthlyEnergyTrend(rows, unit) {
@@ -430,6 +489,65 @@ function monthlyEnergyTrend(rows, unit) {
         count: month.count,
       };
     });
+}
+
+function buildAnomalies({ monthlySpend, fuelTrend, chargeTrend, reserveTrend, vehicle, sellScore }) {
+  const alerts = [];
+  const recentMonths = monthlySpend.slice(-6);
+  const averageMonthly = recentMonths.reduce((sum, month) => sum + month.total, 0) / Math.max(recentMonths.length, 1);
+  const latestMonth = monthlySpend.at(-1);
+  if (latestMonth && averageMonthly && latestMonth.total > averageMonthly * 1.45 && latestMonth.total > 150) {
+    alerts.push({
+      tone: "warning",
+      title: "Monthly spend jumped",
+      detail: `${latestMonth.month} is ${currencyExact.format(latestMonth.total)}, above the recent ${currencyExact.format(averageMonthly)} average.`,
+    });
+  }
+
+  const fuelAverage = fuelTrend.reduce((sum, row) => sum + row.value, 0) / Math.max(fuelTrend.length, 1);
+  const latestFuel = fuelTrend.at(-1);
+  if (latestFuel && fuelAverage && latestFuel.value > fuelAverage * 1.2) {
+    alerts.push({
+      tone: "watch",
+      title: "Fuel price is running high",
+      detail: `${latestFuel.label} averages ${latestFuel.detail}, above your recent trend.`,
+    });
+  }
+
+  const chargeAverage = chargeTrend.reduce((sum, row) => sum + row.value, 0) / Math.max(chargeTrend.length, 1);
+  const latestCharge = chargeTrend.at(-1);
+  if (latestCharge && chargeAverage && latestCharge.value > chargeAverage * 1.2) {
+    alerts.push({
+      tone: "watch",
+      title: "Charging price is running high",
+      detail: `${latestCharge.label} averages ${latestCharge.detail}, above your recent trend.`,
+    });
+  }
+
+  if (reserveTrend > toNumber(vehicle.maintenanceReserve)) {
+    alerts.push({
+      tone: "warning",
+      title: "Maintenance reserve pressure",
+      detail: `Service, repair and tyre trend is ${currency.format(reserveTrend)} against a ${currency.format(toNumber(vehicle.maintenanceReserve))} reserve.`,
+    });
+  }
+
+  if (sellScore >= 78) {
+    alerts.push({
+      tone: "critical",
+      title: "Sale window is opening",
+      detail: "The sell score is high enough to start preparing the listing packet.",
+    });
+  }
+
+  if (!alerts.length) {
+    alerts.push({
+      tone: "good",
+      title: "No major anomalies",
+      detail: "Recent costs look consistent with your current ownership pattern.",
+    });
+  }
+  return alerts;
 }
 
 function buildModel(vehicle) {
@@ -481,7 +599,9 @@ function buildModel(vehicle) {
   ].sort((a, b) => a.km - b.km);
   const fuelTrend = monthlyEnergyTrend(fuelRows, "L");
   const chargeTrend = monthlyEnergyTrend(chargeRows, "kWh");
-  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend };
+  const monthlySpend = monthlySpendTrend(records);
+  const anomalies = buildAnomalies({ monthlySpend, fuelTrend, chargeTrend, reserveTrend, vehicle, sellScore });
+  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend, monthlySpend, anomalies };
 }
 
 function App() {
@@ -489,12 +609,13 @@ function App() {
   const [syncState, setSyncState] = useState(canCloudSync() ? "Connecting" : "Local only");
   const [cloudLoaded, setCloudLoaded] = useState(!canCloudSync());
   const [form, setForm] = useState({ type: "Service", vendor: "", date: today, amount: "", odometer: "", liters: "", kwh: "", notes: "" });
-  const [activeView, setActiveView] = useState("Records");
+  const [activeView, setActiveView] = useState("Overview");
   const [scenarioKm, setScenarioKm] = useState(132000);
   const [scenarioValue, setScenarioValue] = useState(22000);
   const [importMessage, setImportMessage] = useState("");
   const [recordTypeFilter, setRecordTypeFilter] = useState("All");
   const [recordSearch, setRecordSearch] = useState("");
+  const [recurringForm, setRecurringForm] = useState({ name: "", cadence: "Monthly", nextDue: today, amount: "" });
   const fileInput = useRef(null);
   const importInput = useRef(null);
   const hasStoredGarage = useRef(typeof localStorage !== "undefined" && Boolean(localStorage.getItem(storageKey)));
@@ -589,6 +710,30 @@ function App() {
 
   function discardReview(id) {
     updateVehicleList({ ...vehicle, reviewQueue: (vehicle.reviewQueue || []).filter((review) => review.id !== id) });
+  }
+
+  function addRecurring(event) {
+    event.preventDefault();
+    if (!recurringForm.name || !recurringForm.amount) return;
+    updateVehicleList({
+      ...vehicle,
+      recurring: [{ ...recurringForm, id: `recurring-${Date.now()}` }, ...(vehicle.recurring || [])],
+    });
+    setRecurringForm({ name: "", cadence: "Monthly", nextDue: today, amount: "" });
+  }
+
+  function updateRecurring(id, key, value) {
+    updateVehicleList({
+      ...vehicle,
+      recurring: (vehicle.recurring || []).map((item) => item.id === id ? { ...item, [key]: value } : item),
+    });
+  }
+
+  function removeRecurring(id) {
+    updateVehicleList({
+      ...vehicle,
+      recurring: (vehicle.recurring || []).filter((item) => item.id !== id),
+    });
   }
 
   async function handleFiles(files) {
@@ -769,6 +914,38 @@ function App() {
         </aside>
 
         <section className="panel main-panel">
+          {activeView === "Overview" && (
+            <>
+              <div className="section-title"><p>Overview mode</p><h2>Monthly spend and alerts</h2></div>
+              <div className="overview-grid">
+                <section>
+                  <div className="section-title compact-title"><p>Monthly cost view</p><h2>Spend by month</h2></div>
+                  {model.monthlySpend.length ? <MonthlySpendChart rows={model.monthlySpend} /> : <p className="empty-note">Add records to build a monthly spend view.</p>}
+                </section>
+                <section>
+                  <div className="section-title compact-title"><p>Anomaly alerts</p><h2>What needs attention</h2></div>
+                  <div className="alert-list">
+                    {model.anomalies.map((alert) => (
+                      <article key={alert.title} className={`alert-card ${alert.tone}`}>
+                        <strong>{alert.title}</strong>
+                        <p>{alert.detail}</p>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              </div>
+              <div className="section-title with-gap"><p>Recurring costs</p><h2>Next payments</h2></div>
+              <div className="schedule-list">
+                {(vehicle.recurring || []).slice(0, 4).map((item) => (
+                  <article key={item.id}>
+                    <div><strong>{item.name}</strong><small>{item.cadence} · next {item.nextDue}</small></div>
+                    <b>{currency.format(toNumber(item.amount))}</b>
+                  </article>
+                ))}
+              </div>
+            </>
+          )}
+
           {activeView === "Records" && (
             <>
               <div className="section-title"><p>Review queue</p><h2>Imported documents</h2></div>
@@ -820,6 +997,8 @@ function App() {
                   <p>Every kilometre carries fuel, maintenance, paperwork, insurance, and depreciation.</p>
                 </div>
               </div>
+              <div className="section-title with-gap"><p>Monthly cost view</p><h2>Spend by month</h2></div>
+              {model.monthlySpend.length ? <MonthlySpendChart rows={model.monthlySpend} /> : <p className="empty-note">Add records to build a monthly spend view.</p>}
               <div className="section-title with-gap"><p>Energy trend</p><h2>Fuel and electric charging</h2></div>
               {model.fuelTrend.length ? <MiniTrend rows={model.fuelTrend} /> : <p className="empty-note">Add fuel receipts with km and litres to chart consumption.</p>}
               {model.chargeTrend.length ? <MiniTrend rows={model.chargeTrend} /> : <p className="empty-note">Add charge receipts with km and kWh to chart charging efficiency.</p>}
@@ -840,7 +1019,7 @@ function App() {
             </>
           )}
 
-          {activeView === "Sell" && (
+          {activeView === "Sell prep" && (
             <>
               <div className="section-title"><p>Exit model</p><h2>When to sell</h2></div>
               <div className="sell-grid">
@@ -871,11 +1050,29 @@ function App() {
               </div>
 
               <div className="section-title with-gap"><p>Recurring schedule</p><h2>Upcoming ownership costs</h2></div>
+              <form className="recurring-form" onSubmit={addRecurring}>
+                <label>Name<input value={recurringForm.name} onChange={(event) => setRecurringForm({ ...recurringForm, name: event.target.value })} placeholder="Insurance, parking, tyres" /></label>
+                <label>Cadence<select value={recurringForm.cadence} onChange={(event) => setRecurringForm({ ...recurringForm, cadence: event.target.value })}>
+                  <option>Monthly</option>
+                  <option>Annual</option>
+                  <option>One-time</option>
+                </select></label>
+                <label>Next due<input type="date" value={recurringForm.nextDue} onChange={(event) => setRecurringForm({ ...recurringForm, nextDue: event.target.value })} /></label>
+                <label>Amount<input type="number" step="0.01" value={recurringForm.amount} onChange={(event) => setRecurringForm({ ...recurringForm, amount: event.target.value })} /></label>
+                <button type="submit">Add</button>
+              </form>
               <div className="schedule-list">
                 {(vehicle.recurring || []).map((item) => (
-                  <article key={item.id}>
-                    <div><strong>{item.name}</strong><small>{item.cadence} · next {item.nextDue}</small></div>
-                    <b>{currency.format(toNumber(item.amount))}</b>
+                  <article key={item.id} className="recurring-row">
+                    <label>Name<input value={item.name} onChange={(event) => updateRecurring(item.id, "name", event.target.value)} /></label>
+                    <label>Cadence<select value={item.cadence} onChange={(event) => updateRecurring(item.id, "cadence", event.target.value)}>
+                      <option>Monthly</option>
+                      <option>Annual</option>
+                      <option>One-time</option>
+                    </select></label>
+                    <label>Next due<input type="date" value={item.nextDue} onChange={(event) => updateRecurring(item.id, "nextDue", event.target.value)} /></label>
+                    <label>Amount<input type="number" step="0.01" value={item.amount} onChange={(event) => updateRecurring(item.id, "amount", event.target.value)} /></label>
+                    <button className="icon-button" type="button" aria-label={`Remove ${item.name}`} onClick={() => removeRecurring(item.id)}>×</button>
                   </article>
                 ))}
               </div>
