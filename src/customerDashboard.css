@@ -578,6 +578,14 @@ textarea {
   background: #f7f8fa;
 }
 
+.ledger-table tbody tr {
+  cursor: pointer;
+}
+
+.ledger-table tbody tr.selected {
+  background: #eef8f5;
+}
+
 .ledger-table td:nth-child(5) {
   text-align: right;
   white-space: nowrap;
@@ -612,6 +620,11 @@ textarea {
 .type-pill.insurance { color: #275672; background: #edf6fb; }
 .type-pill.repairs { color: #9b382d; background: #fff1ee; }
 .type-pill.parking { color: #3c6470; background: #eef6f8; }
+
+.table-action {
+  min-height: 30px;
+  padding: 6px 10px;
+}
 
 .ledger-toolbar {
   grid-template-columns: 170px minmax(180px, 1fr) auto;
@@ -925,6 +938,98 @@ textarea {
   border-radius: 7px;
   color: #fff;
   background: #b64d3d;
+}
+
+.record-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 20;
+  width: min(520px, 100vw);
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  gap: 14px;
+  padding: 18px;
+  border-left: 1px solid #cfd6df;
+  background: #fff;
+  box-shadow: -18px 0 44px rgba(31, 41, 51, 0.18);
+  overflow-y: auto;
+}
+
+.drawer-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #edf1f4;
+}
+
+.drawer-head p {
+  margin: 0 0 4px;
+  color: #697586;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+.drawer-head span {
+  color: #697586;
+}
+
+.drawer-head button,
+.drawer-actions button:not(.danger-button) {
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid #d7dde4;
+  border-radius: 7px;
+  color: #52606d;
+  background: #fff;
+  font-weight: 800;
+}
+
+.drawer-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.drawer-summary article {
+  display: grid;
+  gap: 4px;
+  padding: 11px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #f7f8fa;
+}
+
+.drawer-summary span {
+  color: #697586;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.66rem;
+  font-weight: 900;
+}
+
+.drawer-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+  align-content: start;
+}
+
+.drawer-wide {
+  grid-column: 1 / -1;
+}
+
+.drawer-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid #edf1f4;
 }
 
 .vehicle-list article.active {
@@ -1323,6 +1428,16 @@ textarea {
     width: 100%;
     margin-top: 8px;
     box-shadow: none;
+  }
+
+  .record-drawer {
+    width: 100vw;
+    padding: 14px;
+  }
+
+  .drawer-summary,
+  .drawer-form {
+    grid-template-columns: 1fr;
   }
 
   .type-dot,

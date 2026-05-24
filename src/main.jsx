@@ -634,12 +634,14 @@ function App() {
   const [recordTypeFilter, setRecordTypeFilter] = useState("All");
   const [recordSearch, setRecordSearch] = useState("");
   const [recurringForm, setRecurringForm] = useState({ name: "", cadence: "Monthly", nextDue: today, amount: "" });
+  const [selectedRecordId, setSelectedRecordId] = useState(null);
   const fileInput = useRef(null);
   const importInput = useRef(null);
   const hasStoredGarage = useRef(typeof localStorage !== "undefined" && Boolean(localStorage.getItem(storageKey)));
 
   const vehicle = garage.vehicles.find((item) => item.id === garage.activeVehicleId) || garage.vehicles[0];
   const model = useMemo(() => buildModel(vehicle), [vehicle]);
+  const selectedRecord = (vehicle.records || []).find((record) => record.id === selectedRecordId);
   const sellState = model.sellScore >= 78 ? "Sell soon" : model.sellScore >= 55 ? "Plan exit" : "Hold";
   const filteredRecords = model.sortedRecords.filter((record) => {
     const typeMatch = recordTypeFilter === "All" || record.type === recordTypeFilter;
@@ -708,6 +710,7 @@ function App() {
 
   function selectVehicle(id) {
     mutateGarage((current) => ({ ...current, activeVehicleId: id }));
+    setSelectedRecordId(null);
   }
 
   function addRecord(event) {
@@ -719,6 +722,7 @@ function App() {
 
   function removeRecord(id) {
     updateVehicleList({ ...vehicle, records: (vehicle.records || []).filter((record) => record.id !== id) });
+    if (selectedRecordId === id) setSelectedRecordId(null);
   }
 
   function updateRecord(id, key, value) {
@@ -1029,28 +1033,14 @@ function App() {
                   </thead>
                   <tbody>
                     {filteredRecords.map((record) => (
-                      <tr key={record.id}>
+                      <tr key={record.id} className={selectedRecordId === record.id ? "selected" : ""} onClick={() => setSelectedRecordId(record.id)}>
                         <td>{record.date}</td>
                         <td><span className={`type-pill ${record.type.toLowerCase()}`}>{record.type}</span></td>
                         <td><strong>{record.vendor || record.type}</strong><small>{record.fileName}</small></td>
                         <td>{record.notes}<small>{record.odometer ? `${formatKm(toNumber(record.odometer))}` : ""}{record.liters ? ` · ${decimal.format(toNumber(record.liters))} L` : ""}{record.kwh ? ` · ${decimal.format(toNumber(record.kwh))} kWh` : ""}</small></td>
                         <td><b>{currencyExact.format(toNumber(record.amount))}</b></td>
                         <td>
-                          <details className="row-menu record-menu">
-                            <summary aria-label={`Edit ${record.vendor || record.type}`}>Manage</summary>
-                            <div className="row-menu-body record-edit-menu">
-                              <label>Type<select value={record.type} onChange={(event) => updateRecord(record.id, "type", event.target.value)}>{categories.map((type) => <option key={type}>{type}</option>)}</select></label>
-                              <label>Vendor<input value={record.vendor || ""} onChange={(event) => updateRecord(record.id, "vendor", event.target.value)} /></label>
-                              <label>Date<input type="date" value={record.date || today} onChange={(event) => updateRecord(record.id, "date", event.target.value)} /></label>
-                              <label>Amount<input type="number" step="0.01" value={record.amount || ""} onChange={(event) => updateRecord(record.id, "amount", event.target.value)} /></label>
-                              <label>Odometer<input type="number" value={record.odometer || ""} onChange={(event) => updateRecord(record.id, "odometer", event.target.value)} /></label>
-                              <label>Litres<input type="number" step="0.01" value={record.liters || ""} onChange={(event) => updateRecord(record.id, "liters", event.target.value)} /></label>
-                              <label>kWh<input type="number" step="0.01" value={record.kwh || ""} onChange={(event) => updateRecord(record.id, "kwh", event.target.value)} /></label>
-                              <label>File<input value={record.fileName || ""} onChange={(event) => updateRecord(record.id, "fileName", event.target.value)} /></label>
-                              <label className="record-notes-field">Notes<textarea value={record.notes || ""} onChange={(event) => updateRecord(record.id, "notes", event.target.value)} /></label>
-                              <button className="danger-button" type="button" onClick={() => removeRecord(record.id)}>Remove</button>
-                            </div>
-                          </details>
+                          <button className="ghost-button table-action" type="button" onClick={(event) => { event.stopPropagation(); setSelectedRecordId(record.id); }}>Open</button>
                         </td>
                       </tr>
                     ))}
@@ -1175,6 +1165,38 @@ function App() {
           )}
         </section>
       </section>
+      {selectedRecord ? (
+        <aside className="record-drawer" aria-label="Record details">
+          <div className="drawer-head">
+            <div>
+              <p>Record detail</p>
+              <h2>{selectedRecord.vendor || selectedRecord.type}</h2>
+              <span>{selectedRecord.date} · {currencyExact.format(toNumber(selectedRecord.amount))}</span>
+            </div>
+            <button type="button" onClick={() => setSelectedRecordId(null)}>Close</button>
+          </div>
+          <div className="drawer-summary">
+            <article><span>Type</span><strong>{selectedRecord.type}</strong></article>
+            <article><span>Amount</span><strong>{currencyExact.format(toNumber(selectedRecord.amount))}</strong></article>
+            <article><span>Odometer</span><strong>{selectedRecord.odometer ? formatKm(toNumber(selectedRecord.odometer)) : "No km"}</strong></article>
+          </div>
+          <div className="drawer-form">
+            <label>Type<select value={selectedRecord.type} onChange={(event) => updateRecord(selectedRecord.id, "type", event.target.value)}>{categories.map((type) => <option key={type}>{type}</option>)}</select></label>
+            <label>Vendor<input value={selectedRecord.vendor || ""} onChange={(event) => updateRecord(selectedRecord.id, "vendor", event.target.value)} /></label>
+            <label>Date<input type="date" value={selectedRecord.date || today} onChange={(event) => updateRecord(selectedRecord.id, "date", event.target.value)} /></label>
+            <label>Amount, EUR<input type="number" step="0.01" value={selectedRecord.amount || ""} onChange={(event) => updateRecord(selectedRecord.id, "amount", event.target.value)} /></label>
+            <label>Odometer km<input type="number" value={selectedRecord.odometer || ""} onChange={(event) => updateRecord(selectedRecord.id, "odometer", event.target.value)} /></label>
+            <label>Litres<input type="number" step="0.01" value={selectedRecord.liters || ""} onChange={(event) => updateRecord(selectedRecord.id, "liters", event.target.value)} /></label>
+            <label>kWh<input type="number" step="0.01" value={selectedRecord.kwh || ""} onChange={(event) => updateRecord(selectedRecord.id, "kwh", event.target.value)} /></label>
+            <label>Document / file<input value={selectedRecord.fileName || ""} onChange={(event) => updateRecord(selectedRecord.id, "fileName", event.target.value)} /></label>
+            <label className="drawer-wide">Notes<textarea value={selectedRecord.notes || ""} onChange={(event) => updateRecord(selectedRecord.id, "notes", event.target.value)} /></label>
+          </div>
+          <div className="drawer-actions">
+            <button className="danger-button" type="button" onClick={() => removeRecord(selectedRecord.id)}>Delete record</button>
+            <button type="button" onClick={() => setSelectedRecordId(null)}>Done</button>
+          </div>
+        </aside>
+      ) : null}
     </main>
   );
 }
