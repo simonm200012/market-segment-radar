@@ -70,7 +70,7 @@ p {
 
 h1 {
   margin-top: 2px;
-  font-size: clamp(1.65rem, 3.2vw, 2.8rem);
+  font-size: clamp(1.55rem, 2.6vw, 2.35rem);
   line-height: 1.04;
   letter-spacing: 0;
 }
@@ -106,10 +106,10 @@ h2 {
 
 .garage-switcher button {
   flex: 0 0 auto;
-  min-width: 210px;
+  min-width: 190px;
   display: grid;
   gap: 3px;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border: 1px solid #d7dde4;
   border-radius: 8px;
   color: #344054;
@@ -142,8 +142,8 @@ h2 {
 
 .hero-panel {
   display: grid;
-  grid-template-columns: 1.1fr 1.4fr 360px;
-  gap: 14px;
+  grid-template-columns: minmax(300px, 0.95fr) minmax(420px, 1.25fr) minmax(300px, 0.8fr);
+  gap: 10px;
   align-items: stretch;
 }
 
@@ -163,21 +163,23 @@ h2 {
 .sell-card {
   display: grid;
   align-content: start;
-  gap: 16px;
-  padding: 18px;
+  gap: 12px;
+  padding: 16px;
 }
 
 .decision-card {
-  min-height: 250px;
-  align-content: space-between;
-  color: #fff;
-  background: #17201d;
-  border-color: #17201d;
+  min-height: 150px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  color: #1f2933;
+  background: #fff;
+  border-color: #cbd6df;
+  box-shadow: inset 4px 0 0 #2f7f72, 0 10px 32px rgba(31, 41, 51, 0.05);
 }
 
 .decision-card p {
   margin: 0;
-  color: rgba(255, 255, 255, 0.62);
+  color: #697586;
   text-transform: uppercase;
   letter-spacing: 0.07em;
   font-size: 0.72rem;
@@ -185,29 +187,30 @@ h2 {
 }
 
 .decision-card h2 {
-  margin-top: 8px;
-  font-size: clamp(2.2rem, 4vw, 4.4rem);
-  line-height: 0.92;
+  margin-top: 6px;
+  font-size: clamp(1.9rem, 2.4vw, 2.6rem);
+  line-height: 1;
 }
 
 .decision-card div > span {
   display: block;
   max-width: 360px;
-  margin-top: 12px;
-  color: rgba(255, 255, 255, 0.68);
+  margin-top: 8px;
+  color: #697586;
   line-height: 1.45;
+  font-size: 0.92rem;
 }
 
 .score-dial {
-  width: 126px;
-  height: 126px;
+  width: 86px;
+  height: 86px;
   display: grid;
   place-items: center;
   justify-self: end;
   border-radius: 50%;
   background:
-    radial-gradient(circle at center, #17201d 0 56%, transparent 57%),
-    conic-gradient(#68b39f var(--score), rgba(255, 255, 255, 0.13) 0);
+    radial-gradient(circle at center, #fff 0 57%, transparent 58%),
+    conic-gradient(#2f7f72 var(--score), #e4e9ee 0);
 }
 
 .score-dial strong,
@@ -216,16 +219,16 @@ h2 {
 }
 
 .score-dial strong {
-  margin-top: -10px;
-  font-size: 2.35rem;
+  margin-top: -7px;
+  font-size: 1.6rem;
   line-height: 1;
 }
 
 .score-dial small {
   align-self: end;
-  margin-bottom: 28px;
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 0.72rem;
+  margin-bottom: 18px;
+  color: #697586;
+  font-size: 0.58rem;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -233,11 +236,11 @@ h2 {
 .hero-metrics {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .hero-metrics .stat {
-  min-height: 250px;
+  min-height: 150px;
 }
 
 .panel-head {
@@ -264,7 +267,7 @@ h2 {
 }
 
 .panel-head.compact h2 {
-  font-size: 2rem;
+  font-size: 1.75rem;
   line-height: 1;
 }
 
@@ -324,19 +327,21 @@ textarea {
 }
 
 .sell-card {
-  background: #111827;
-  color: white;
+  min-height: 150px;
+  background: #fff;
+  color: #1f2933;
+  box-shadow: inset 4px 0 0 #111827, 0 10px 32px rgba(31, 41, 51, 0.05);
 }
 
 .sell-card .panel-head p,
 .sell-card .recommendation-list span {
-  color: rgba(255, 255, 255, 0.62);
+  color: #697586;
 }
 
 .sell-card .panel-head > span {
-  border-color: rgba(255, 255, 255, 0.14);
-  color: #fff;
-  background: rgba(255, 255, 255, 0.08);
+  border-color: #d7dde4;
+  color: #344054;
+  background: #f7f8fa;
 }
 
 .score-rail,
@@ -360,16 +365,16 @@ textarea {
   display: grid;
   gap: 1px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid #d7dde4;
   border-radius: 8px;
-  background: rgba(255, 255, 255, 0.1);
+  background: #d7dde4;
 }
 
 .recommendation-list div {
   display: grid;
   gap: 5px;
-  padding: 13px;
-  background: rgba(255, 255, 255, 0.045);
+  padding: 9px 11px;
+  background: #fff;
 }
 
 .recommendation-list strong {
@@ -381,18 +386,18 @@ textarea {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1px;
   overflow: hidden;
-  margin-top: 14px;
+  margin-top: 10px;
   border: 1px solid #d7dde4;
   border-radius: 8px;
   background: #d7dde4;
 }
 
 .status-strip div {
-  min-height: 70px;
+  min-height: 54px;
   display: grid;
   align-content: center;
   gap: 5px;
-  padding: 13px 15px;
+  padding: 10px 13px;
   background: #fff;
 }
 
@@ -410,18 +415,18 @@ textarea {
 
 .stats-grid {
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-top: 14px;
+  margin-top: 10px;
 }
 
 .stat {
-  min-height: 128px;
-  padding: 16px;
+  min-height: 96px;
+  padding: 14px;
 }
 
 .stat strong {
   display: block;
-  margin: 12px 0 6px;
-  font-size: clamp(1.55rem, 2.5vw, 2.4rem);
+  margin: 9px 0 5px;
+  font-size: clamp(1.35rem, 1.8vw, 1.9rem);
   line-height: 1;
 }
 
@@ -437,14 +442,15 @@ textarea {
 }
 
 .stat.primary {
-  color: #fff;
-  border-color: #2f7f72;
-  background: #2f7f72;
+  color: #1f2933;
+  border-color: #9bc9bd;
+  background: #f2faf7;
+  box-shadow: inset 4px 0 0 #2f7f72, 0 10px 32px rgba(31, 41, 51, 0.05);
 }
 
 .stat.primary p,
 .stat.primary span {
-  color: rgba(255, 255, 255, 0.76);
+  color: #52606d;
 }
 
 .workbench {
@@ -979,16 +985,16 @@ textarea {
   }
 
   .score-dial {
-    width: 94px;
-    height: 94px;
+    width: 78px;
+    height: 78px;
   }
 
   .score-dial strong {
-    font-size: 1.8rem;
+    font-size: 1.45rem;
   }
 
   .score-dial small {
-    margin-bottom: 18px;
+    margin-bottom: 15px;
     font-size: 0.62rem;
   }
 
