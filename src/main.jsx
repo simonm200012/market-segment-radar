@@ -702,6 +702,10 @@ function App() {
     }));
   }
 
+  function selectVehicle(id) {
+    mutateGarage((current) => ({ ...current, activeVehicleId: id }));
+  }
+
   function addRecord(event) {
     event.preventDefault();
     if (!form.amount || !form.date) return;
@@ -804,10 +808,13 @@ function App() {
   return (
     <main className="app-shell">
       <header className="topbar">
-        <div>
-          <p>Garage ledger</p>
-          <h1>Car ownership dashboard</h1>
+        <div className="brand-lockup">
+          <strong>Garage Ledger</strong>
+          <span>Ownership costs, documents and sale timing</span>
         </div>
+        <label className="vehicle-select">Vehicle<select value={vehicle.id} onChange={(event) => selectVehicle(event.target.value)}>
+          {garage.vehicles.map((item) => <option key={item.id} value={item.id}>{item.name} · {integer.format(toNumber(item.currentKilometers))} km</option>)}
+        </select></label>
         <nav aria-label="Dashboard sections">
           {views.map((view) => (
             <button key={view} className={activeView === view ? "active" : ""} onClick={() => setActiveView(view)}>{view}</button>
@@ -816,62 +823,26 @@ function App() {
         <label className="view-select">View<select value={activeView} onChange={(event) => setActiveView(event.target.value)}>
           {views.map((view) => <option key={view}>{view}</option>)}
         </select></label>
+        <div className="top-actions">
+          <span className={`sync-pill ${syncState.toLowerCase().replace(/\s/g, "-")}`}>{syncState}</span>
+          <button onClick={addVehicle}>Add vehicle</button>
+        </div>
       </header>
 
-      <section className="garage-switcher" aria-label="Vehicles">
-        {garage.vehicles.map((item) => (
-          <button key={item.id} className={item.id === vehicle.id ? "active" : ""} onClick={() => mutateGarage((current) => ({ ...current, activeVehicleId: item.id }))}>
-            <strong>{item.name}</strong>
-            <span>{formatKm(toNumber(item.currentKilometers))}</span>
-          </button>
-        ))}
-        <button className="add-vehicle" onClick={addVehicle}>+ Add vehicle</button>
+      <section className="dashboard-intro">
+        <div>
+          <p>Active vehicle</p>
+          <h1>{vehicle.name}</h1>
+          <span>{formatKm(toNumber(vehicle.currentKilometers))} · {sellState} · {model.sellInMonths ? `${model.sellInMonths} months to target` : "sell window open"}</span>
+        </div>
+        <div className="score-chip" style={{ "--score": `${model.sellScore}%` }}><strong>{model.sellScore}</strong><span>sell score</span></div>
       </section>
 
-      <section className="hero-panel">
-        <div className="decision-card">
-          <div>
-            <p>Ownership decision</p>
-            <h2>{sellState}</h2>
-            <span>{model.sellScore >= 78 ? "Sale preparation should be active." : model.sellScore >= 55 ? "Keep driving, but prepare the exit packet." : "Costs are still inside a reasonable hold range."}</span>
-          </div>
-          <div className="score-dial" style={{ "--score": `${model.sellScore * 3.6}deg` }}>
-            <strong>{model.sellScore}</strong>
-            <small>score</small>
-          </div>
-        </div>
-        <div className="hero-metrics">
-          <Stat label="Cost per km" value={currencyExact.format(model.costPerKm)} sub={`${formatKm(model.kilometersOwned)} owned`} tone="primary" />
-          <Stat label="Total cost" value={currency.format(model.totalCost)} sub={`${currency.format(model.directSpend)} cash + ${currency.format(model.depreciation)} depreciation`} />
-          <Stat label="Monthly burn" value={currency.format(model.monthlyCost)} sub="Ownership cost normalized by time" />
-        </div>
-        <div className="sell-card">
-          <div className="panel-head compact">
-            <div>
-              <p>Exit watch</p>
-              <h2>{model.sellInMonths ? `${model.sellInMonths} mo` : "Now"}</h2>
-            </div>
-            <span>{formatKm(toNumber(vehicle.currentKilometers))}</span>
-          </div>
-          <div className="recommendation-list">
-            <div><span>Next service</span><strong>{model.nextHeavyService}</strong></div>
-            <div><span>Depreciation</span><strong>{currency.format(model.depreciation)}</strong></div>
-            <div><span>Energy</span><strong>{model.avgChargePrice ? `${currencyExact.format(model.avgChargePrice)}/kWh` : (model.avgFuelPrice ? `${currencyExact.format(model.avgFuelPrice)}/L` : "No data")}</strong></div>
-          </div>
-        </div>
-      </section>
-
-      <section className="status-strip" aria-label="Ownership status">
-        <div><span>Records</span><strong>{integer.format((vehicle.records || []).length)}</strong></div>
-        <div><span>Review queue</span><strong>{integer.format((vehicle.reviewQueue || []).length)}</strong></div>
-        <div><span>Recurring 12 mo</span><strong>{currency.format(model.recurring12)}</strong></div>
-        <div><span>Cloud sync</span><strong>{syncState}</strong></div>
-      </section>
-
-      <section className="stats-grid">
-        <Stat label="Cash spend" value={currency.format(model.directSpend)} sub="Ledger items only" />
-        <Stat label="Depreciation" value={currency.format(model.depreciation)} sub="Purchase value minus market value" />
-        <Stat label="Recurring 12 mo" value={currency.format(model.recurring12)} sub="Insurance, registration, parking, reserves" />
+      <section className="kpi-strip">
+        <Stat label="Cost per km" value={currencyExact.format(model.costPerKm)} sub={`${formatKm(model.kilometersOwned)} owned`} tone="primary" />
+        <Stat label="Total cost" value={currency.format(model.totalCost)} sub={`${currency.format(model.directSpend)} cash + ${currency.format(model.depreciation)} depreciation`} />
+        <Stat label="Monthly burn" value={currency.format(model.monthlyCost)} sub="Ownership cost normalized by time" />
+        <Stat label="Recurring 12 mo" value={currency.format(model.recurring12)} sub={`${integer.format((vehicle.records || []).length)} records · ${integer.format((vehicle.reviewQueue || []).length)} to review`} />
         <Stat
           label="Energy average"
           value={model.avgChargePrice ? `${currencyExact.format(model.avgChargePrice)}/kWh` : (model.avgFuelPrice ? `${currencyExact.format(model.avgFuelPrice)}/L` : "0,00 €")}
@@ -986,15 +957,30 @@ function App() {
                 <span>{integer.format(filteredRecords.length)} shown</span>
               </div>
               <div className="record-list">
-                {filteredRecords.map((record) => (
-                  <article className="record-row" key={record.id}>
-                    <span className={`type-dot ${record.type.toLowerCase()}`} />
-                    <div><strong>{record.vendor || record.type}</strong><small>{record.date} · {record.fileName}</small></div>
-                    <p>{record.notes}<span>{record.odometer ? ` ${formatKm(toNumber(record.odometer))}` : ""}{record.liters ? ` · ${decimal.format(toNumber(record.liters))} L` : ""}{record.kwh ? ` · ${decimal.format(toNumber(record.kwh))} kWh` : ""}</span></p>
-                    <b>{currencyExact.format(toNumber(record.amount))}</b>
-                    <button className="icon-button" type="button" aria-label={`Remove ${record.vendor || record.type}`} onClick={() => removeRecord(record.id)}>×</button>
-                  </article>
-                ))}
+                <table className="ledger-table">
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>Vendor</th>
+                      <th>Details</th>
+                      <th>Amount</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredRecords.map((record) => (
+                      <tr key={record.id}>
+                        <td>{record.date}</td>
+                        <td><span className={`type-pill ${record.type.toLowerCase()}`}>{record.type}</span></td>
+                        <td><strong>{record.vendor || record.type}</strong><small>{record.fileName}</small></td>
+                        <td>{record.notes}<small>{record.odometer ? `${formatKm(toNumber(record.odometer))}` : ""}{record.liters ? ` · ${decimal.format(toNumber(record.liters))} L` : ""}{record.kwh ? ` · ${decimal.format(toNumber(record.kwh))} kWh` : ""}</small></td>
+                        <td><b>{currencyExact.format(toNumber(record.amount))}</b></td>
+                        <td><button className="icon-button" type="button" aria-label={`Remove ${record.vendor || record.type}`} onClick={() => removeRecord(record.id)}>×</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
                 {!filteredRecords.length ? <p className="empty-note">No records match the current filters.</p> : null}
               </div>
             </>
