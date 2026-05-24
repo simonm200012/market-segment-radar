@@ -1,0 +1,26 @@
+{
+  "name": "Garage Ledger",
+  "short_name": "Garage",
+  "description": "Track vehicle costs, documents, energy, and sell timing.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6f8",
+  "theme_color": "#17231f",
+  "categories": ["finance", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "./icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "./icons/maskable-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

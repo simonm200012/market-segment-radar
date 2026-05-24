@@ -30,6 +30,14 @@ const categoryColors = {
   Other: "#8a94a6",
 };
 
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    const base = import.meta.env.BASE_URL || "/";
+    const swUrl = new URL(`${base}sw.js`, window.location.href);
+    navigator.serviceWorker.register(swUrl, { scope: base }).catch(() => {});
+  });
+}
+
 const servicePlan = [
   { km: 30000, label: "Oil and cabin filters" },
   { km: 60000, label: "Brake fluid, DSG/Haldex check" },
