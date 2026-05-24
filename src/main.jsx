@@ -393,17 +393,43 @@ function Bar({ label, value, max, color = "#2f7f72", detail }) {
 }
 
 function MiniTrend({ rows }) {
-  const max = Math.max(...rows.map((row) => row.consumption || row.price), 1);
+  const max = Math.max(...rows.map((row) => row.value), 1);
   return (
     <div className="mini-trend">
       {rows.map((row) => (
-        <div key={row.id}>
-          <span style={{ height: `${Math.max(((row.consumption || row.price) / max) * 100, 8)}%` }} />
-          <small>{row.label}</small>
+        <div key={row.id} title={`${row.label}: ${row.detail}`}>
+          <span style={{ height: `${Math.max((row.value / max) * 100, 8)}%` }} />
+          <small>{row.label}<b>{row.detail}</b></small>
         </div>
       ))}
     </div>
   );
+}
+
+function monthlyEnergyTrend(rows, unit) {
+  const months = rows.reduce((acc, record) => {
+    const month = (record.date || today).slice(0, 7);
+    const bucket = acc.get(month) || { month, amount: 0, quantity: 0, count: 0 };
+    bucket.amount += toNumber(record.amount);
+    bucket.quantity += toNumber(unit === "kWh" ? record.kwh : record.liters);
+    bucket.count += 1;
+    acc.set(month, bucket);
+    return acc;
+  }, new Map());
+
+  return [...months.values()]
+    .filter((month) => month.quantity > 0)
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map((month) => {
+      const value = month.amount / month.quantity;
+      return {
+        id: `${unit}-${month.month}`,
+        label: month.month,
+        value,
+        detail: `${currencyExact.format(value)}/${unit}`,
+        count: month.count,
+      };
+    });
 }
 
 function buildModel(vehicle) {
@@ -453,26 +479,8 @@ function buildModel(vehicle) {
       complete: true,
     })),
   ].sort((a, b) => a.km - b.km);
-  const fuelTrend = fuelRows.map((record, index) => {
-    const previous = fuelRows[index - 1];
-    const distance = previous ? toNumber(record.odometer) - toNumber(previous.odometer) : 0;
-    return {
-      id: record.id,
-      label: record.date.slice(5),
-      price: toNumber(record.amount) / Math.max(toNumber(record.liters), 1),
-      consumption: distance > 0 ? (toNumber(record.liters) / distance) * 100 : 0,
-    };
-  });
-  const chargeTrend = chargeRows.map((record, index) => {
-    const previous = chargeRows[index - 1];
-    const distance = previous ? toNumber(record.odometer) - toNumber(previous.odometer) : 0;
-    return {
-      id: record.id,
-      label: record.date.slice(5),
-      price: toNumber(record.amount) / Math.max(toNumber(record.kwh), 1),
-      consumption: distance > 0 ? (toNumber(record.kwh) / distance) * 100 : 0,
-    };
-  });
+  const fuelTrend = monthlyEnergyTrend(fuelRows, "L");
+  const chargeTrend = monthlyEnergyTrend(chargeRows, "kWh");
   return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend };
 }
 

@@ -808,7 +808,7 @@ textarea {
 .mini-trend {
   min-height: 190px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(42px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
   gap: 10px;
   align-items: end;
   padding: 14px;
@@ -834,8 +834,15 @@ textarea {
 }
 
 .mini-trend small {
+  display: grid;
+  gap: 2px;
   color: #697586;
   font-size: 0.74rem;
+}
+
+.mini-trend small b {
+  color: #1f2933;
+  font-size: 0.78rem;
 }
 
 .sell-grid {
