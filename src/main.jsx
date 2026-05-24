@@ -87,6 +87,14 @@ function toNumber(value) {
   return Number.parseFloat(value) || 0;
 }
 
+function cleanNumber(value) {
+  if (value === null || value === undefined) return "";
+  const text = String(value).trim().replace(/[€\s]/g, "");
+  if (!text) return "";
+  const normalized = text.includes(",") && !text.includes(".") ? text.replace(",", ".") : text.replace(/,/g, "");
+  return Number.parseFloat(normalized) || "";
+}
+
 function formatKm(value) {
   return `${integer.format(value)} km`;
 }
@@ -98,9 +106,14 @@ function monthsBetween(start, end = today) {
 }
 
 function normalizeDate(raw) {
-  const value = raw.replaceAll("/", "-");
+  const value = String(raw || "").trim().replaceAll("/", "-");
+  if (!value) return today;
   if (/^20\d{2}-/.test(value)) return value.split("-").map((part, index) => (index ? part.padStart(2, "0") : part)).join("-");
-  const [month, day, year] = value.split("-");
+  const [first, second, year] = value.split("-");
+  if (!first || !second || !year) return today;
+  const europeanDate = Number(first) > 12 || Number(second) <= 12;
+  const day = europeanDate ? first : second;
+  const month = europeanDate ? second : first;
   return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
 }
 
@@ -140,6 +153,97 @@ function parseUploadedText(text, fileName) {
     fileName,
     confidence: Math.min(95, 35 + fields * 15 + (type !== "Other" ? 15 : 0)),
   };
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      field += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(field);
+      field = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(field);
+      if (row.some((cell) => cell.trim())) rows.push(row);
+      row = [];
+      field = "";
+    } else {
+      field += char;
+    }
+  }
+
+  row.push(field);
+  if (row.some((cell) => cell.trim())) rows.push(row);
+  return rows;
+}
+
+function normalizeHeader(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function csvCell(record, names) {
+  return names.map((name) => record[normalizeHeader(name)]).find((value) => value !== undefined) || "";
+}
+
+function normalizeRecordType(type, record) {
+  const combined = `${type} ${csvCell(record, ["vendor", "notes", "description"])} ${csvCell(record, ["kwh", "kw h"])}`.toLowerCase();
+  if (/charge|charging|electric|ev|kwh|kw h/.test(combined)) return "Charge";
+  if (/fuel|gas|petrol|diesel|litre|liter|mol|omv|shell|bp/.test(combined)) return "Fuel";
+  if (/insurance|zavar|policy/.test(combined)) return "Insurance";
+  if (/registration|registr|plate|road tax/.test(combined)) return "Registration";
+  if (/tire|tyre|gume/.test(combined)) return "Tires";
+  if (/repair|repairs|brake|fix|battery/.test(combined)) return "Repairs";
+  if (/service|oil|filter|inspection|servis/.test(combined)) return "Service";
+  if (/parking|park|easypark/.test(combined)) return "Parking";
+  if (/loan|finance|leasing/.test(combined)) return "Loan";
+  return categories.includes(type) ? type : "Other";
+}
+
+function parseLedgerCsv(text, fileName) {
+  const rows = parseCsv(text);
+  const headers = rows[0]?.map(normalizeHeader) || [];
+  if (!headers.length || !headers.includes("type") || !headers.some((header) => ["amount", "amounteur", "eur", "cost"].includes(header))) return [];
+
+  return rows.slice(1).map((cells, index) => {
+    const record = Object.fromEntries(headers.map((header, cellIndex) => [header, cells[cellIndex]?.trim() || ""]));
+    const type = normalizeRecordType(csvCell(record, ["type", "category"]), record);
+    const amount = cleanNumber(csvCell(record, ["amount eur", "amount, eur", "amount", "eur", "cost", "price"]));
+    const date = normalizeDate(csvCell(record, ["date", "transaction date", "paid date"]));
+    const vendor = csvCell(record, ["vendor", "merchant", "supplier", "station"]);
+    const notes = csvCell(record, ["notes", "description", "memo"]);
+    const odometer = cleanNumber(csvCell(record, ["odometer", "km", "kilometers", "kilometres", "mileage"]));
+    const liters = cleanNumber(csvCell(record, ["litres", "liters", "l"]));
+    const kwh = cleanNumber(csvCell(record, ["kwh", "kw h"]));
+
+    if (!amount || !date) return null;
+    return {
+      id: Date.now() + index,
+      type,
+      vendor: vendor || type,
+      date,
+      amount,
+      odometer,
+      liters,
+      kwh,
+      notes,
+      fileName,
+    };
+  }).filter(Boolean);
+}
+
+function recordKey(record) {
+  return [record.type, record.vendor, record.date, toNumber(record.amount).toFixed(2), record.notes || ""].join("|").toLowerCase();
 }
 
 function loadGarage() {
@@ -380,6 +484,7 @@ function App() {
   const [activeView, setActiveView] = useState("Records");
   const [scenarioKm, setScenarioKm] = useState(132000);
   const [scenarioValue, setScenarioValue] = useState(22000);
+  const [importMessage, setImportMessage] = useState("");
   const fileInput = useRef(null);
   const importInput = useRef(null);
   const hasStoredGarage = useRef(typeof localStorage !== "undefined" && Boolean(localStorage.getItem(storageKey)));
@@ -471,12 +576,35 @@ function App() {
   }
 
   async function handleFiles(files) {
-    const uploaded = await Promise.all(Array.from(files).map(async (file) => {
+    const fileList = Array.from(files || []);
+    const ledgerRecords = (await Promise.all(fileList
+      .filter((file) => /\.csv$/i.test(file.name))
+      .map(async (file) => parseLedgerCsv(await file.text(), file.name))))
+      .flat();
+
+    const documentFiles = fileList.filter((file) => !/\.csv$/i.test(file.name));
+    const uploaded = await Promise.all(documentFiles.map(async (file) => {
       const text = file.type.startsWith("text/") || /\.(csv|txt|json)$/i.test(file.name) ? await file.text() : "";
       return parseUploadedText(text, file.name);
     }));
-    updateVehicleList({ ...vehicle, reviewQueue: [...uploaded, ...(vehicle.reviewQueue || [])] });
+
+    const existingKeys = new Set((vehicle.records || []).map(recordKey));
+    const newLedgerRecords = ledgerRecords.filter((record) => !existingKeys.has(recordKey(record)));
+
+    updateVehicleList({
+      ...vehicle,
+      records: [...newLedgerRecords, ...(vehicle.records || [])],
+      reviewQueue: [...uploaded, ...(vehicle.reviewQueue || [])],
+    });
+    if (newLedgerRecords.length || uploaded.length) {
+      const imported = newLedgerRecords.length ? `${newLedgerRecords.length} spreadsheet rows imported` : "";
+      const queued = uploaded.length ? `${uploaded.length} documents queued` : "";
+      setImportMessage([imported, queued].filter(Boolean).join(" · "));
+    } else {
+      setImportMessage("No new rows found. Existing spreadsheet records were skipped.");
+    }
     setActiveView("Records");
+    if (fileInput.current) fileInput.current.value = "";
   }
 
   function addVehicle() {
@@ -585,9 +713,10 @@ function App() {
           <button className="upload-zone" onClick={() => fileInput.current?.click()} onDrop={(event) => { event.preventDefault(); handleFiles(event.dataTransfer.files); }} onDragOver={(event) => event.preventDefault()}>
             <span>+</span>
             <strong>Add documents</strong>
-            <small>Uploads land in review before they affect totals.</small>
+            <small>CSV ledgers import directly. Receipts land in review.</small>
           </button>
-          <input ref={fileInput} type="file" multiple hidden onChange={(event) => handleFiles(event.target.files)} />
+          <input ref={fileInput} type="file" multiple hidden accept=".csv,.txt,.json,.pdf,.jpg,.jpeg,.png" onChange={(event) => handleFiles(event.target.files)} />
+          {importMessage ? <p className="import-message">{importMessage}</p> : null}
 
           <form onSubmit={addRecord} className="record-form">
             <label>Type<select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}>{categories.map((type) => <option key={type}>{type}</option>)}</select></label>
