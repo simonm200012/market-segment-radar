@@ -140,6 +140,11 @@ h2 {
   background: #1f2933;
 }
 
+.view-select {
+  display: none;
+  min-width: 180px;
+}
+
 .hero-panel {
   display: grid;
   grid-template-columns: minmax(300px, 0.95fr) minmax(420px, 1.25fr) minmax(300px, 0.8fr);
@@ -477,9 +482,74 @@ textarea {
 .settings-panel {
   display: grid;
   gap: 11px;
-  margin-bottom: 22px;
-  padding-bottom: 18px;
-  border-bottom: 1px solid #d7dde4;
+}
+
+.disclosure {
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.disclosure + .disclosure {
+  margin-top: 10px;
+}
+
+.main-panel > .disclosure {
+  margin-bottom: 12px;
+}
+
+.disclosure summary {
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 13px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.disclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure summary::after {
+  content: "⌄";
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d7dde4;
+  border-radius: 7px;
+  color: #52606d;
+  background: #f7f8fa;
+  font-weight: 900;
+  transition: transform 160ms ease;
+}
+
+.disclosure[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.disclosure summary span {
+  display: grid;
+  gap: 3px;
+}
+
+.disclosure summary small {
+  color: #697586;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.disclosure summary strong {
+  color: #1f2933;
+}
+
+.disclosure-body {
+  padding: 0 13px 13px;
 }
 
 .upload-zone {
@@ -528,7 +598,6 @@ textarea {
 .record-form {
   display: grid;
   gap: 11px;
-  margin-top: 14px;
 }
 
 .record-form button {
@@ -700,6 +769,10 @@ textarea {
   border-color: #d7dde4;
 }
 
+.schedule-list .schedule-row {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
 .recurring-form {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) 140px 150px 130px auto;
@@ -720,8 +793,49 @@ textarea {
   background: #1f2933;
 }
 
-.schedule-list .recurring-row {
-  grid-template-columns: minmax(160px, 1fr) 140px 150px 130px 32px;
+.row-menu {
+  position: relative;
+}
+
+.row-menu summary {
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid #d7dde4;
+  border-radius: 7px;
+  color: #52606d;
+  background: #fff;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 800;
+}
+
+.row-menu summary::-webkit-details-marker {
+  display: none;
+}
+
+.row-menu-body {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 4;
+  width: min(620px, calc(100vw - 48px));
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) 130px 150px 120px auto;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid #cfd6df;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 44px rgba(31, 41, 51, 0.18);
+}
+
+.danger-button {
+  min-height: 40px;
+  padding: 9px 12px;
+  border-radius: 7px;
+  color: #fff;
+  background: #b64d3d;
 }
 
 .vehicle-list article.active {
@@ -1075,9 +1189,12 @@ textarea {
   }
 
   .topbar nav {
+    display: none;
+  }
+
+  .view-select {
+    display: grid;
     width: 100%;
-    grid-template-columns: repeat(6, minmax(86px, 1fr));
-    overflow-x: auto;
   }
 
   .hero-panel,
@@ -1091,7 +1208,8 @@ textarea {
   .sell-grid,
   .record-row,
   .recurring-form,
-  .schedule-list .recurring-row,
+  .row-menu-body,
+  .schedule-list .schedule-row,
   .review-row,
   .backup-panel,
   .timeline-list article {
@@ -1131,6 +1249,17 @@ textarea {
 
   .record-row {
     gap: 7px;
+  }
+
+  .row-menu {
+    position: static;
+  }
+
+  .row-menu-body {
+    position: static;
+    width: 100%;
+    margin-top: 8px;
+    box-shadow: none;
   }
 
   .type-dot,

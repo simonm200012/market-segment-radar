@@ -391,6 +391,20 @@ function Stat({ label, value, sub, tone = "" }) {
   );
 }
 
+function Disclosure({ title, kicker, children, open = false }) {
+  return (
+    <details className="disclosure" open={open}>
+      <summary>
+        <span>
+          {kicker ? <small>{kicker}</small> : null}
+          <strong>{title}</strong>
+        </span>
+      </summary>
+      <div className="disclosure-body">{children}</div>
+    </details>
+  );
+}
+
 function Bar({ label, value, max, color = "#2f7f72", detail }) {
   return (
     <div className="bar-item">
@@ -799,6 +813,9 @@ function App() {
             <button key={view} className={activeView === view ? "active" : ""} onClick={() => setActiveView(view)}>{view}</button>
           ))}
         </nav>
+        <label className="view-select">View<select value={activeView} onChange={(event) => setActiveView(event.target.value)}>
+          {views.map((view) => <option key={view}>{view}</option>)}
+        </select></label>
       </header>
 
       <section className="garage-switcher" aria-label="Vehicles">
@@ -864,10 +881,7 @@ function App() {
 
       <section className="workbench">
         <aside className="panel upload-panel">
-          <div className="section-title">
-            <p>Vehicle filters</p>
-            <h2>Assumptions</h2>
-          </div>
+          <Disclosure title="Assumptions" kicker="Vehicle filters" open>
           <div className="settings-panel">
             <label className="vehicle-name">Vehicle<input value={vehicle.name} onChange={(event) => updateVehicle("name", event.target.value)} /></label>
             <div className="form-pair">
@@ -883,11 +897,9 @@ function App() {
               <label>Sell target km<input type="number" value={vehicle.targetSellKilometers} onChange={(event) => updateVehicle("targetSellKilometers", event.target.value)} /></label>
             </div>
           </div>
+          </Disclosure>
 
-          <div className="section-title">
-            <p>Capture</p>
-            <h2>Upload and manual entry</h2>
-          </div>
+          <Disclosure title="Upload documents" kicker="Capture">
           <button className="upload-zone" onClick={() => fileInput.current?.click()} onDrop={(event) => { event.preventDefault(); handleFiles(event.dataTransfer.files); }} onDragOver={(event) => event.preventDefault()}>
             <span>+</span>
             <strong>Add documents</strong>
@@ -895,7 +907,9 @@ function App() {
           </button>
           <input ref={fileInput} type="file" multiple hidden accept=".csv,.txt,.json,.pdf,.jpg,.jpeg,.png" onChange={(event) => handleFiles(event.target.files)} />
           {importMessage ? <p className="import-message">{importMessage}</p> : null}
+          </Disclosure>
 
+          <Disclosure title="Manual record" kicker="Quick add">
           <form onSubmit={addRecord} className="record-form">
             <label>Type<select value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })}>{categories.map((type) => <option key={type}>{type}</option>)}</select></label>
             <label>Vendor<input value={form.vendor} onChange={(event) => setForm({ ...form, vendor: event.target.value })} placeholder="Shop, insurer, station" /></label>
@@ -911,6 +925,7 @@ function App() {
             <label>Notes<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} placeholder="What happened?" /></label>
             <button type="submit">Save record</button>
           </form>
+          </Disclosure>
         </aside>
 
         <section className="panel main-panel">
@@ -948,17 +963,18 @@ function App() {
 
           {activeView === "Records" && (
             <>
-              <div className="section-title"><p>Review queue</p><h2>Imported documents</h2></div>
-              <div className="review-list">
-                {(vehicle.reviewQueue || []).length ? vehicle.reviewQueue.map((item) => (
-                  <article className="review-row" key={item.id}>
-                    <div><strong>{item.vendor}</strong><small>{item.fileName} · {item.confidence}% confidence</small></div>
-                    <p>{item.type} · {item.amount ? currencyExact.format(toNumber(item.amount)) : "No amount"} · {item.odometer ? formatKm(toNumber(item.odometer)) : "No km"}</p>
-                    <button onClick={() => approveReview(item)}>Approve</button>
-                    <button className="ghost-button" onClick={() => discardReview(item.id)}>Discard</button>
-                  </article>
-                )) : <p className="empty-note">No documents waiting for review.</p>}
-              </div>
+              <Disclosure title={`Imported documents (${integer.format((vehicle.reviewQueue || []).length)})`} kicker="Review queue">
+                <div className="review-list">
+                  {(vehicle.reviewQueue || []).length ? vehicle.reviewQueue.map((item) => (
+                    <article className="review-row" key={item.id}>
+                      <div><strong>{item.vendor}</strong><small>{item.fileName} · {item.confidence}% confidence</small></div>
+                      <p>{item.type} · {item.amount ? currencyExact.format(toNumber(item.amount)) : "No amount"} · {item.odometer ? formatKm(toNumber(item.odometer)) : "No km"}</p>
+                      <button onClick={() => approveReview(item)}>Approve</button>
+                      <button className="ghost-button" onClick={() => discardReview(item.id)}>Discard</button>
+                    </article>
+                  )) : <p className="empty-note">No documents waiting for review.</p>}
+                </div>
+              </Disclosure>
 
               <div className="section-title with-gap"><p>Ledger</p><h2>Ownership documents and costs</h2></div>
               <div className="ledger-toolbar">
@@ -1050,6 +1066,7 @@ function App() {
               </div>
 
               <div className="section-title with-gap"><p>Recurring schedule</p><h2>Upcoming ownership costs</h2></div>
+              <Disclosure title="Add recurring cost" kicker="Editor">
               <form className="recurring-form" onSubmit={addRecurring}>
                 <label>Name<input value={recurringForm.name} onChange={(event) => setRecurringForm({ ...recurringForm, name: event.target.value })} placeholder="Insurance, parking, tyres" /></label>
                 <label>Cadence<select value={recurringForm.cadence} onChange={(event) => setRecurringForm({ ...recurringForm, cadence: event.target.value })}>
@@ -1061,18 +1078,26 @@ function App() {
                 <label>Amount<input type="number" step="0.01" value={recurringForm.amount} onChange={(event) => setRecurringForm({ ...recurringForm, amount: event.target.value })} /></label>
                 <button type="submit">Add</button>
               </form>
+              </Disclosure>
               <div className="schedule-list">
                 {(vehicle.recurring || []).map((item) => (
-                  <article key={item.id} className="recurring-row">
-                    <label>Name<input value={item.name} onChange={(event) => updateRecurring(item.id, "name", event.target.value)} /></label>
-                    <label>Cadence<select value={item.cadence} onChange={(event) => updateRecurring(item.id, "cadence", event.target.value)}>
-                      <option>Monthly</option>
-                      <option>Annual</option>
-                      <option>One-time</option>
-                    </select></label>
-                    <label>Next due<input type="date" value={item.nextDue} onChange={(event) => updateRecurring(item.id, "nextDue", event.target.value)} /></label>
-                    <label>Amount<input type="number" step="0.01" value={item.amount} onChange={(event) => updateRecurring(item.id, "amount", event.target.value)} /></label>
-                    <button className="icon-button" type="button" aria-label={`Remove ${item.name}`} onClick={() => removeRecurring(item.id)}>×</button>
+                  <article key={item.id} className="schedule-row">
+                    <div><strong>{item.name}</strong><small>{item.cadence} · next {item.nextDue}</small></div>
+                    <b>{currency.format(toNumber(item.amount))}</b>
+                    <details className="row-menu">
+                      <summary aria-label={`Edit ${item.name}`}>Manage</summary>
+                      <div className="row-menu-body recurring-row">
+                        <label>Name<input value={item.name} onChange={(event) => updateRecurring(item.id, "name", event.target.value)} /></label>
+                        <label>Cadence<select value={item.cadence} onChange={(event) => updateRecurring(item.id, "cadence", event.target.value)}>
+                          <option>Monthly</option>
+                          <option>Annual</option>
+                          <option>One-time</option>
+                        </select></label>
+                        <label>Next due<input type="date" value={item.nextDue} onChange={(event) => updateRecurring(item.id, "nextDue", event.target.value)} /></label>
+                        <label>Amount<input type="number" step="0.01" value={item.amount} onChange={(event) => updateRecurring(item.id, "amount", event.target.value)} /></label>
+                        <button className="danger-button" type="button" onClick={() => removeRecurring(item.id)}>Remove</button>
+                      </div>
+                    </details>
                   </article>
                 ))}
               </div>
