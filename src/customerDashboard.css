@@ -615,6 +615,12 @@ textarea {
   font-weight: 700;
 }
 
+.import-message.muted {
+  border-color: #d7dde4;
+  color: #52606d;
+  background: #f7f8fa;
+}
+
 .record-form {
   display: grid;
   gap: 11px;
@@ -767,9 +773,87 @@ textarea {
 }
 
 .review-row {
-  grid-template-columns: minmax(180px, 0.8fr) minmax(180px, 1fr) auto auto;
+  grid-template-columns: 112px minmax(0, 1fr);
   border-color: #d7dde4;
-  background: #f7f8fa;
+  background: #fff;
+}
+
+.review-row > p,
+.review-actions {
+  grid-column: 2;
+}
+
+.review-workflow {
+  gap: 12px;
+}
+
+.review-preview {
+  min-height: 112px;
+  display: grid;
+  align-content: space-between;
+  padding: 12px;
+  border-radius: 8px;
+  color: #fff;
+  background: linear-gradient(135deg, #1f2933, #2f7f72);
+}
+
+.review-preview.pdf {
+  background: linear-gradient(135deg, #28313b, #b64d3d);
+}
+
+.review-preview.image {
+  background: linear-gradient(135deg, #31688e, #2f7f72);
+}
+
+.review-preview.csv {
+  background: linear-gradient(135deg, #245e55, #8d6b2f);
+}
+
+.review-preview span {
+  justify-self: start;
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.18);
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.review-preview b {
+  font-size: 1.6rem;
+}
+
+.review-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.review-row > p {
+  color: #697586;
+  font-size: 0.86rem;
+}
+
+.review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 8px;
+}
+
+.review-actions a,
+.vault-card-actions a,
+.drawer-actions a {
+  min-height: 34px;
+  display: inline-grid;
+  place-items: center;
+  padding: 7px 11px;
+  border: 1px solid #b7d7cf;
+  border-radius: 7px;
+  color: #245e55;
+  background: #eef8f5;
+  font-size: 0.86rem;
+  font-weight: 900;
+  text-decoration: none;
 }
 
 .overview-grid {
@@ -925,6 +1009,57 @@ textarea {
   color: #17201d;
   background: #fff;
   font-weight: 900;
+}
+
+.monthly-digest {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.monthly-digest > div,
+.monthly-digest article {
+  min-height: 112px;
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  padding: 14px;
+  border: 1px solid #d7dde4;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.monthly-digest > div {
+  color: #fff;
+  border-color: #17201d;
+  background:
+    linear-gradient(135deg, rgba(23, 32, 29, 0.96), rgba(47, 127, 114, 0.88)),
+    radial-gradient(circle at top right, rgba(239, 184, 74, 0.34), transparent 36%);
+}
+
+.monthly-digest p,
+.monthly-digest span {
+  color: #697586;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-size: 0.68rem;
+  font-weight: 900;
+}
+
+.monthly-digest > div p,
+.monthly-digest > div strong {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.monthly-digest h2,
+.monthly-digest b {
+  font-size: 1.55rem;
+}
+
+.monthly-digest small {
+  color: #697586;
+  line-height: 1.35;
 }
 
 .insight-strip {
@@ -1168,6 +1303,10 @@ textarea {
   color: #52606d;
   background: #fff;
   font-weight: 800;
+}
+
+.mobile-tabbar {
+  display: none;
 }
 
 .compact-title {
@@ -1944,6 +2083,7 @@ textarea {
   .app-shell {
     width: min(100% - 20px, 1360px);
     padding-top: 10px;
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
   }
 
   .topbar {
@@ -1956,8 +2096,7 @@ textarea {
   }
 
   .view-select {
-    display: grid;
-    width: 100%;
+    display: none;
   }
 
   .cockpit-hero,
@@ -1965,6 +2104,7 @@ textarea {
   .health-track,
   .setup-wizard-head,
   .setup-steps,
+  .monthly-digest,
   .next-action-panel,
   .overview-grid,
   .overview-split,
@@ -1980,9 +2120,49 @@ textarea {
   .row-menu-body,
   .schedule-list .schedule-row,
   .review-row,
+  .review-fields,
   .backup-panel,
   .timeline-list article {
     grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    position: static;
+  }
+
+  .top-actions {
+    justify-content: space-between;
+  }
+
+  .brand-lockup span {
+    display: none;
+  }
+
+  .upload-panel {
+    order: 2;
+  }
+
+  .main-panel {
+    order: 1;
+  }
+
+  .review-row > p,
+  .review-actions {
+    grid-column: 1;
+  }
+
+  .review-actions {
+    justify-content: stretch;
+  }
+
+  .review-actions button,
+  .review-actions a {
+    flex: 1 1 120px;
+  }
+
+  .monthly-digest > div,
+  .monthly-digest article {
+    min-height: 94px;
   }
 
   .panel {
@@ -2029,5 +2209,51 @@ textarea {
   .type-dot,
   .icon-button {
     display: none;
+  }
+
+  .mobile-tabbar {
+    position: fixed;
+    right: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
+    left: 10px;
+    z-index: 20;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 4px;
+    padding: 7px;
+    border: 1px solid rgba(215, 221, 228, 0.88);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 18px 46px rgba(31, 41, 51, 0.22);
+    backdrop-filter: blur(16px);
+  }
+
+  .mobile-tabbar button {
+    min-width: 0;
+    min-height: 52px;
+    display: grid;
+    place-items: center;
+    gap: 2px;
+    border-radius: 13px;
+    color: #697586;
+    background: transparent;
+    font-size: 0.68rem;
+    font-weight: 900;
+  }
+
+  .mobile-tabbar span {
+    font-size: 1.05rem;
+    line-height: 1;
+  }
+
+  .mobile-tabbar b {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-tabbar button.active {
+    color: #fff;
+    background: #1f2933;
   }
 }

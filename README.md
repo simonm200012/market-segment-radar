@@ -62,10 +62,18 @@ Add these GitHub repository secrets before the Pages deploy runs:
 VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key
 VITE_GARAGE_SYNC_ID=simon-garage
+VITE_SUPABASE_STORAGE_BUCKET=garage-documents
 ```
 
 Without those secrets, the dashboard still works online but saves only in the
 current browser.
+
+For document files to open across devices, also create a Supabase Storage bucket
+named `garage-documents` or use your own bucket name in
+`VITE_SUPABASE_STORAGE_BUCKET`. For the current personal dashboard, the simplest
+setup is a public bucket with an insert policy for the anon key. The app stores
+the file URL on the approved record, so the Vault can open PDFs/images from
+iPhone Safari after sync.
 
 To avoid losing entered costs:
 

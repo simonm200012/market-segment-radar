@@ -6,7 +6,7 @@ const currency = new Intl.NumberFormat("sl-SI", { style: "currency", currency: "
 const currencyExact = new Intl.NumberFormat("sl-SI", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
 const integer = new Intl.NumberFormat("sl-SI", { maximumFractionDigits: 0 });
 const decimal = new Intl.NumberFormat("sl-SI", { maximumFractionDigits: 2 });
-const today = "2026-05-23";
+const today = new Date().toISOString().slice(0, 10);
 const storageKey = "garage-ledger-v2";
 const backupKey = "garage-ledger-v2-backups";
 const maxBackups = 12;
@@ -14,9 +14,11 @@ const syncConfig = {
   url: import.meta.env.VITE_SUPABASE_URL || "",
   anonKey: import.meta.env.VITE_SUPABASE_ANON_KEY || "",
   id: import.meta.env.VITE_GARAGE_SYNC_ID || "default-garage",
+  bucket: import.meta.env.VITE_SUPABASE_STORAGE_BUCKET || "garage-documents",
 };
 const categories = ["Service", "Fuel", "Charge", "Insurance", "Registration", "Tires", "Repairs", "Parking", "Loan", "Other"];
 const views = ["Overview", "Records", "Vault", "Costs", "Timeline", "Sell prep", "Garage"];
+const mobileViews = ["Overview", "Records", "Vault", "Costs", "Garage"];
 const categoryColors = {
   Service: "#2f7f72",
   Fuel: "#c2653a",
@@ -30,7 +32,7 @@ const categoryColors = {
   Other: "#8a94a6",
 };
 
-if ("serviceWorker" in navigator) {
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     const base = import.meta.env.BASE_URL || "/";
     const swUrl = new URL(`${base}sw.js`, window.location.href);
@@ -143,7 +145,7 @@ function addMonths(date, count) {
   return next.toISOString().slice(0, 10);
 }
 
-function parseUploadedText(text, fileName) {
+function parseUploadedText(text, fileName, extra = {}) {
   const lower = `${fileName} ${text}`.toLowerCase();
   const amountMatch = text.match(/(?:total|amount|paid|premium|due|skupaj|znesek)?\s*(?:€|eur)?\s*([0-9]{1,5}(?:[.,][0-9]{2})?)/i);
   const odometerMatch = text.match(/(?:odometer|mileage|kilometers|kilometres|km)\D{0,12}([0-9]{2,7})/i);
@@ -171,6 +173,10 @@ function parseUploadedText(text, fileName) {
     kwh: kwhMatch ? kwhMatch[1].replace(",", ".") : "",
     notes: "Imported from upload. Review extracted fields before relying on it.",
     fileName,
+    fileUrl: extra.fileUrl || "",
+    storagePath: extra.storagePath || "",
+    storageStatus: extra.storageStatus || "",
+    mimeType: extra.mimeType || "",
     confidence: Math.min(95, 35 + fields * 15 + (type !== "Other" ? 15 : 0)),
   };
 }
@@ -328,6 +334,39 @@ function saveLocalGarage(garage) {
 
 function canCloudSync() {
   return Boolean(syncConfig.url && syncConfig.anonKey);
+}
+
+function canStoreDocuments() {
+  return Boolean(syncConfig.url && syncConfig.anonKey && syncConfig.bucket);
+}
+
+function safePathPart(value) {
+  return String(value || "file").toLowerCase().replace(/[^a-z0-9.-]+/g, "-").replace(/^-|-$/g, "") || "file";
+}
+
+async function uploadDocumentFile(file, vehicleId) {
+  if (!canStoreDocuments()) {
+    return { fileUrl: "", storagePath: "", storageStatus: "local metadata only" };
+  }
+
+  const storagePath = `${safePathPart(syncConfig.id)}/${safePathPart(vehicleId)}/${Date.now()}-${safePathPart(file.name)}`;
+  const response = await fetch(`${syncConfig.url}/storage/v1/object/${encodeURIComponent(syncConfig.bucket)}/${storagePath}`, {
+    method: "POST",
+    headers: {
+      apikey: syncConfig.anonKey,
+      Authorization: `Bearer ${syncConfig.anonKey}`,
+      "Content-Type": file.type || "application/octet-stream",
+      "x-upsert": "true",
+    },
+    body: file,
+  });
+  if (!response.ok) throw new Error("Document storage upload failed");
+
+  return {
+    fileUrl: `${syncConfig.url}/storage/v1/object/public/${encodeURIComponent(syncConfig.bucket)}/${storagePath}`,
+    storagePath,
+    storageStatus: "stored in cloud",
+  };
 }
 
 async function fetchCloudGarage() {
@@ -738,6 +777,10 @@ function buildDocumentVault(records, recurring) {
         status,
         nextDue: recurringItem?.nextDue || "",
         record,
+        fileUrl: record.fileUrl || "",
+        storagePath: record.storagePath || "",
+        storageStatus: record.storageStatus || "",
+        mimeType: record.mimeType || "",
       };
     })
     .sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -762,6 +805,23 @@ function buildDocumentVault(records, recurring) {
   }, {});
 
   return { documents: [...missing, ...docs], counts };
+}
+
+function buildMonthlyDigest(model) {
+  const month = model.latestMonth?.month || today.slice(0, 7);
+  const topCategory = model.latestMonth?.segments?.[0];
+  const fileCount = model.documentVault.documents.filter((doc) => doc.status !== "missing").length;
+  const dueSoon = model.documentVault.documents.find((doc) => doc.status === "expiring soon" || doc.status === "expired");
+  return {
+    month,
+    spend: model.latestMonth?.total || 0,
+    delta: model.previousMonth ? model.monthlyDelta : null,
+    topCategory,
+    recordCount: model.sortedRecords.filter((record) => (record.date || "").startsWith(month)).length,
+    fileCount,
+    dueSoon,
+    headline: topCategory ? `${topCategory.type} led ${month} spend` : "Monthly recap will appear after records are added",
+  };
 }
 
 function buildNextActions({ anomalies, documentVault, upcomingRecurring, nextHeavyService, sellScore, reviewQueue }) {
@@ -846,7 +906,8 @@ function buildModel(vehicle) {
   };
   const nextActions = buildNextActions({ anomalies, documentVault, upcomingRecurring, nextHeavyService, sellScore, reviewQueue: vehicle.reviewQueue || [] });
   const monthlyInsight = latestMonth?.segments?.[0] ? `${latestMonth.segments[0].type} drove ${Math.round((latestMonth.segments[0].total / Math.max(latestMonth.total, 1)) * 100)}% of ${latestMonth.month} spend.` : "Add records to generate monthly insight.";
-  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend, monthlySpend, anomalies, documentVault, documentCompleteness, healthScores, nextActions, monthlyInsight, latestMonth, previousMonth, monthlyDelta, upcomingRecurring };
+  const monthlyDigest = buildMonthlyDigest({ documentVault, latestMonth, monthlyDelta, previousMonth, sortedRecords });
+  return { kilometersOwned, directSpend, depreciation, totalCost, costPerKm, liters, kwh, avgFuelPrice, avgChargePrice, consumption, chargeConsumption, monthlyCost, sellInMonths, sellScore, categoriesBySpend, maxCategory, nextHeavyService, sortedRecords, lastRecord, remainingKilometers, reserveTrend, recurring12, timeline, fuelTrend, chargeTrend, monthlySpend, anomalies, documentVault, documentCompleteness, healthScores, nextActions, monthlyInsight, latestMonth, previousMonth, monthlyDelta, upcomingRecurring, monthlyDigest };
 }
 
 function App() {
@@ -858,6 +919,7 @@ function App() {
   const [scenarioKm, setScenarioKm] = useState(132000);
   const [scenarioValue, setScenarioValue] = useState(22000);
   const [importMessage, setImportMessage] = useState("");
+  const [storageMessage, setStorageMessage] = useState("");
   const [recordTypeFilter, setRecordTypeFilter] = useState("All");
   const [recordSearch, setRecordSearch] = useState("");
   const [recurringForm, setRecurringForm] = useState({ name: "", cadence: "Monthly", nextDue: today, amount: "" });
@@ -962,6 +1024,13 @@ function App() {
     });
   }
 
+  function updateReview(id, key, value) {
+    updateVehicleList({
+      ...vehicle,
+      reviewQueue: (vehicle.reviewQueue || []).map((item) => item.id === id ? { ...item, [key]: value } : item),
+    });
+  }
+
   function approveReview(item) {
     const { confidence, ...record } = item;
     updateVehicleList({
@@ -1001,6 +1070,7 @@ function App() {
 
   async function handleFiles(files) {
     const fileList = Array.from(files || []);
+    setStorageMessage("");
     const ledgerRecords = (await Promise.all(fileList
       .filter((file) => /\.csv$/i.test(file.name))
       .map(async (file) => parseLedgerCsv(await file.text(), file.name))))
@@ -1009,7 +1079,13 @@ function App() {
     const documentFiles = fileList.filter((file) => !/\.csv$/i.test(file.name));
     const uploaded = await Promise.all(documentFiles.map(async (file) => {
       const text = file.type.startsWith("text/") || /\.(csv|txt|json)$/i.test(file.name) ? await file.text() : "";
-      return parseUploadedText(text, file.name);
+      let storage = { fileUrl: "", storagePath: "", storageStatus: "local metadata only" };
+      try {
+        storage = await uploadDocumentFile(file, vehicle.id);
+      } catch {
+        storage = { fileUrl: "", storagePath: "", storageStatus: "storage upload failed" };
+      }
+      return parseUploadedText(text, file.name, { ...storage, mimeType: file.type });
     }));
 
     const existingKeys = new Set((vehicle.records || []).map(recordKey));
@@ -1024,6 +1100,8 @@ function App() {
       const imported = newLedgerRecords.length ? `${newLedgerRecords.length} spreadsheet rows imported` : "";
       const queued = uploaded.length ? `${uploaded.length} documents queued` : "";
       setImportMessage([imported, queued].filter(Boolean).join(" · "));
+      const stored = uploaded.filter((item) => item.fileUrl).length;
+      if (uploaded.length) setStorageMessage(stored ? `${stored}/${uploaded.length} files stored in Supabase Storage` : "Files queued as metadata. Add a public Supabase Storage bucket for cross-device file opening.");
     } else {
       setImportMessage("No new rows found. Existing spreadsheet records were skipped.");
     }
@@ -1144,6 +1222,7 @@ function App() {
           </button>
           <input ref={fileInput} type="file" multiple hidden accept=".csv,.txt,.json,.pdf,.jpg,.jpeg,.png" onChange={(event) => handleFiles(event.target.files)} />
           {importMessage ? <p className="import-message">{importMessage}</p> : null}
+          {storageMessage ? <p className="import-message muted">{storageMessage}</p> : null}
           </Disclosure>
 
           <Disclosure title="Manual record" kicker="Quick add">
@@ -1215,6 +1294,28 @@ function App() {
                   <span>{model.nextActions[0]?.detail}</span>
                 </div>
                 <button type="button" onClick={() => setActiveView(model.nextActions[0]?.view || "Records")}>Open</button>
+              </section>
+              <section className="monthly-digest">
+                <div>
+                  <p>Monthly digest</p>
+                  <h2>{model.monthlyDigest.month}</h2>
+                  <strong>{model.monthlyDigest.headline}</strong>
+                </div>
+                <article>
+                  <span>Spend</span>
+                  <b>{currency.format(model.monthlyDigest.spend)}</b>
+                  <small>{model.monthlyDigest.delta === null ? "No baseline yet" : `${model.monthlyDigest.delta >= 0 ? "+" : ""}${currency.format(model.monthlyDigest.delta)} vs previous month`}</small>
+                </article>
+                <article>
+                  <span>Records</span>
+                  <b>{integer.format(model.monthlyDigest.recordCount)}</b>
+                  <small>{model.monthlyDigest.topCategory ? `${model.monthlyDigest.topCategory.type} was largest` : "Add records to enrich this"}</small>
+                </article>
+                <article>
+                  <span>Vault</span>
+                  <b>{integer.format(model.monthlyDigest.fileCount)}</b>
+                  <small>{model.monthlyDigest.dueSoon ? `${model.monthlyDigest.dueSoon.type} ${model.monthlyDigest.dueSoon.status}` : "No urgent document issue"}</small>
+                </article>
               </section>
               <div className="insight-strip">
                 <article>
@@ -1309,13 +1410,27 @@ function App() {
           {activeView === "Records" && (
             <>
               <Disclosure title={`Imported documents (${integer.format((vehicle.reviewQueue || []).length)})`} kicker="Review queue">
-                <div className="review-list">
+                <div className="review-list review-workflow">
                   {(vehicle.reviewQueue || []).length ? vehicle.reviewQueue.map((item) => (
                     <article className="review-row" key={item.id}>
-                      <div><strong>{item.vendor}</strong><small>{item.fileName} · {item.confidence}% confidence</small></div>
-                      <p>{item.type} · {item.amount ? currencyExact.format(toNumber(item.amount)) : "No amount"} · {item.odometer ? formatKm(toNumber(item.odometer)) : "No km"}</p>
-                      <button onClick={() => approveReview(item)}>Approve</button>
-                      <button className="ghost-button" onClick={() => discardReview(item.id)}>Discard</button>
+                      <div className={`review-preview ${documentPreviewType(item.fileName)}`}>
+                        <span>{fileExtension(item.fileName)}</span>
+                        <b>{item.confidence}%</b>
+                      </div>
+                      <div className="review-fields">
+                        <label>Vendor<input value={item.vendor || ""} onChange={(event) => updateReview(item.id, "vendor", event.target.value)} /></label>
+                        <label>Type<select value={item.type} onChange={(event) => updateReview(item.id, "type", event.target.value)}>{categories.map((type) => <option key={type}>{type}</option>)}</select></label>
+                        <label>Date<input type="date" value={item.date || today} onChange={(event) => updateReview(item.id, "date", event.target.value)} /></label>
+                        <label>Amount<input type="number" step="0.01" value={item.amount || ""} onChange={(event) => updateReview(item.id, "amount", event.target.value)} /></label>
+                        <label>Odometer<input type="number" value={item.odometer || ""} onChange={(event) => updateReview(item.id, "odometer", event.target.value)} /></label>
+                        <label>File<input value={item.fileName || ""} onChange={(event) => updateReview(item.id, "fileName", event.target.value)} /></label>
+                      </div>
+                      <p>{item.storageStatus || "local metadata only"}{item.fileUrl ? " · opens across devices" : ""}</p>
+                      <div className="review-actions">
+                        {item.fileUrl ? <a href={item.fileUrl} target="_blank" rel="noreferrer">Preview file</a> : null}
+                        <button onClick={() => approveReview(item)}>Approve</button>
+                        <button className="ghost-button" onClick={() => discardReview(item.id)}>Discard</button>
+                      </div>
                     </article>
                   )) : <p className="empty-note">No documents waiting for review.</p>}
                 </div>
@@ -1387,7 +1502,9 @@ function App() {
                       <strong>{doc.title}</strong>
                       <small>{doc.vendor}{doc.date ? ` · ${doc.date}` : ""}{doc.nextDue ? ` · due ${doc.nextDue}` : ""}</small>
                       <p>{doc.record?.notes || (doc.status === "missing" ? "Add or import this document to complete the vehicle file." : "Stored from ledger record.")}</p>
+                      {doc.storageStatus ? <small>{doc.storageStatus}</small> : null}
                       <div className="vault-card-actions">
+                        {doc.fileUrl ? <a href={doc.fileUrl} target="_blank" rel="noreferrer">Open file</a> : null}
                         {doc.record ? <button type="button" onClick={() => { setSelectedRecordId(doc.record.id); setActiveView("Records"); }}>Open record</button> : <button type="button" onClick={() => { setActiveView("Records"); fileInput.current?.click(); }}>Upload file</button>}
                       </div>
                     </article>
@@ -1511,6 +1628,14 @@ function App() {
           )}
         </section>
       </section>
+      <nav className="mobile-tabbar" aria-label="Mobile dashboard sections">
+        {mobileViews.map((view) => (
+          <button key={view} type="button" className={activeView === view ? "active" : ""} onClick={() => setActiveView(view)}>
+            <span>{view === "Overview" ? "⌂" : view === "Records" ? "+" : view === "Vault" ? "▣" : view === "Costs" ? "€" : "⋯"}</span>
+            <b>{view}</b>
+          </button>
+        ))}
+      </nav>
       {selectedRecord ? (
         <aside className="record-drawer" aria-label="Record details">
           <div className="drawer-head">
@@ -1538,6 +1663,7 @@ function App() {
             <label className="drawer-wide">Notes<textarea value={selectedRecord.notes || ""} onChange={(event) => updateRecord(selectedRecord.id, "notes", event.target.value)} /></label>
           </div>
           <div className="drawer-actions">
+            {selectedRecord.fileUrl ? <a href={selectedRecord.fileUrl} target="_blank" rel="noreferrer">Open document</a> : null}
             <button className="danger-button" type="button" onClick={() => removeRecord(selectedRecord.id)}>Delete record</button>
             <button type="button" onClick={() => setSelectedRecordId(null)}>Done</button>
           </div>
