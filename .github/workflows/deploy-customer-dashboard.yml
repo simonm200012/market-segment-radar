@@ -6,31 +6,31 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
-  id-token: write
 
 concurrency:
   group: customer-dashboard-pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
+      - name: Clone repository
+        run: |
+          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" repo
+          cd repo
+          git checkout "${GITHUB_SHA}"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Install dependencies
+        working-directory: repo
         run: npm ci
 
       - name: Build dashboard
+        working-directory: repo
         run: npm run build
         env:
           GITHUB_PAGES: "1"
@@ -39,18 +39,41 @@ jobs:
           VITE_GARAGE_SYNC_ID: ${{ secrets.VITE_GARAGE_SYNC_ID }}
           VITE_SUPABASE_STORAGE_BUCKET: ${{ secrets.VITE_SUPABASE_STORAGE_BUCKET }}
 
-      - name: Upload Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: static/customer-dashboard
+      - name: Publish gh-pages branch
+        run: |
+          cd repo
+          if git ls-remote --exit-code --heads origin gh-pages; then
+            git clone --branch gh-pages "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" ../pages
+          else
+            mkdir ../pages
+            cd ../pages
+            git init -b gh-pages
+            git remote add origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            cd ../repo
+          fi
+          find ../pages -mindepth 1 -maxdepth 1 ! -name ".git" -exec rm -rf {} +
+          cp -R static/customer-dashboard/. ../pages/
+          touch ../pages/.nojekyll
+          cd ../pages
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Deploy customer dashboard ${GITHUB_SHA}" || exit 0
+          git push origin gh-pages
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
 
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    runs-on: ubuntu-latest
-    needs: build
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Select gh-pages as Pages source
+        run: |
+          cat > pages-source.json <<'JSON'
+          {
+            "build_type": "legacy",
+            "source": {
+              "branch": "gh-pages",
+              "path": "/"
+            }
+          }
+          JSON
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/pages" --input pages-source.json
+        env:
+          GH_TOKEN: ${{ github.token }}
