@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Garage Ledger">
+  <rect width="180" height="180" rx="40" fill="#17231f"/>
+  <path d="M40 100c0-28 22-51 50-51s50 23 50 51v28H40v-28Z" fill="#f4f6f8"/>
+  <path d="M54 100c0-20 16-36 36-36s36 16 36 36v11H54v-11Z" fill="#2f7f72"/>
+  <path d="M64 98c6-11 15-18 26-18s20 7 26 18H64Z" fill="#efb84a"/>
+  <circle cx="64" cy="126" r="12" fill="#17231f"/>
+  <circle cx="116" cy="126" r="12" fill="#17231f"/>
+</svg>
