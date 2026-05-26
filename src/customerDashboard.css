@@ -182,9 +182,9 @@ h2 {
 .cockpit-hero {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px;
-  margin-bottom: 10px;
-  padding: 20px;
+  gap: 14px;
+  margin-bottom: 8px;
+  padding: 14px 16px;
   color: #fff;
   border-color: #17201d;
   background:
@@ -194,7 +194,7 @@ h2 {
 
 .cockpit-main {
   display: grid;
-  gap: 10px;
+  gap: 7px;
 }
 
 .cockpit-main p,
@@ -208,35 +208,35 @@ h2 {
 }
 
 .cockpit-main h1 {
-  font-size: clamp(2rem, 4vw, 4.4rem);
-  line-height: 0.95;
+  font-size: clamp(1.9rem, 3.1vw, 3.35rem);
+  line-height: 0.98;
 }
 
 .cockpit-main > strong {
   color: rgba(255, 255, 255, 0.76);
-  font-size: 1rem;
+  font-size: 0.9rem;
 }
 
 .cockpit-side {
   display: grid;
-  grid-template-columns: repeat(2, 112px);
-  gap: 10px;
+  grid-template-columns: repeat(2, 86px);
+  gap: 8px;
   align-content: center;
 }
 
 .score-chip {
-  width: 112px;
+  width: 86px;
   display: grid;
-  gap: 6px;
-  padding: 10px;
+  gap: 4px;
+  padding: 8px;
   border-radius: 8px;
   background: linear-gradient(90deg, #2f7f72 var(--score), #e4e9ee 0);
   text-align: center;
 }
 
 .document-ring {
-  width: 112px;
-  height: 112px;
+  width: 86px;
+  height: 86px;
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -251,16 +251,16 @@ h2 {
 }
 
 .document-ring strong {
-  margin-top: -14px;
+  margin-top: -11px;
   color: #fff;
-  font-size: 1.4rem;
+  font-size: 1.1rem;
 }
 
 .document-ring span {
   align-self: end;
-  margin-bottom: 26px;
+  margin-bottom: 20px;
   color: rgba(255, 255, 255, 0.62);
-  font-size: 0.62rem;
+  font-size: 0.55rem;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -268,13 +268,13 @@ h2 {
 .health-track {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  max-width: 720px;
-  margin-top: 10px;
+  gap: 6px;
+  max-width: 640px;
+  margin-top: 6px;
 }
 
 .health-track span {
-  height: 34px;
+  height: 26px;
   position: relative;
   overflow: hidden;
   border-radius: 7px;
@@ -298,17 +298,17 @@ h2 {
   color: #fff;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  font-size: 0.66rem;
+  font-size: 0.58rem;
 }
 
 .score-chip strong {
   color: #fff;
-  font-size: 1.45rem;
+  font-size: 1.15rem;
 }
 
 .score-chip span {
   color: rgba(255, 255, 255, 0.82);
-  font-size: 0.68rem;
+  font-size: 0.56rem;
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -316,11 +316,19 @@ h2 {
 .kpi-strip {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .kpi-strip .stat {
-  min-height: 104px;
+  min-height: 78px;
+}
+
+.kpi-strip .stat p {
+  font-size: 0.64rem;
+}
+
+.kpi-strip .stat span {
+  font-size: 0.84rem;
 }
 
 .panel-head {
@@ -444,14 +452,14 @@ textarea {
 }
 
 .stat {
-  min-height: 96px;
-  padding: 14px;
+  min-height: 80px;
+  padding: 11px 12px;
 }
 
 .stat strong {
   display: block;
-  margin: 9px 0 5px;
-  font-size: clamp(1.35rem, 1.8vw, 1.9rem);
+  margin: 6px 0 4px;
+  font-size: clamp(1.18rem, 1.45vw, 1.55rem);
   line-height: 1;
 }
 
