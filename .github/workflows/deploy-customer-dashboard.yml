@@ -62,18 +62,3 @@ jobs:
           git push origin gh-pages
         env:
           GITHUB_TOKEN: ${{ github.token }}
-
-      - name: Select gh-pages as Pages source
-        run: |
-          cat > pages-source.json <<'JSON'
-          {
-            "build_type": "legacy",
-            "source": {
-              "branch": "gh-pages",
-              "path": "/"
-            }
-          }
-          JSON
-          gh api --method PUT "repos/${GITHUB_REPOSITORY}/pages" --input pages-source.json
-        env:
-          GH_TOKEN: ${{ github.token }}
