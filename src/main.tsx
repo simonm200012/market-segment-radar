@@ -2,23 +2,41 @@ import React, { FormEvent, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./customerDashboard.css";
 
-type VehicleStatus = "Owned" | "Leased" | "Financed" | "Archived";
+type VehicleStatus = "Active" | "Inactive" | "Sold" | "Under repair" | "Archived";
+type OwnershipType = "Owned" | "Leased" | "Rented" | "Financed";
 type FuelType = "Petrol" | "Diesel" | "Hybrid" | "Electric";
-type CostType = "Fuel" | "Maintenance" | "Repairs" | "Insurance" | "Registration" | "Tolls" | "Parking" | "Washing" | "Tires" | "Other";
-type Result = "Passed" | "Failed" | "Advisory";
-type TaskStatus = "Scheduled" | "Due soon" | "Overdue" | "Complete";
-type View = "Dashboard" | "Ledger" | "Trips" | "Inspections" | "Maintenance" | "Odometer" | "Documents" | "Analytics";
+type Transmission = "Manual" | "Automatic" | "CVT" | "Single-speed";
+type CostType = "Fuel" | "Maintenance" | "Repairs" | "Insurance" | "Registration" | "Technical inspections" | "Road tax" | "Tolls" | "Parking" | "Car wash" | "Tires" | "Fines" | "Leasing" | "Depreciation" | "Accessories" | "Emergency" | "Other";
+type CostStatus = "Draft" | "Approved" | "Paid" | "Reimbursed" | "Rejected";
+type TripPurpose = "Business" | "Personal" | "Commute" | "Delivery" | "Service" | "Other";
+type Result = "Passed" | "Failed" | "Conditional" | "Pending";
+type TaskStatus = "Upcoming" | "Due soon" | "Overdue" | "Completed" | "Skipped";
+type View = "Dashboard" | "Vehicles" | "Ledger" | "Trips" | "Fuel" | "Maintenance" | "Inspections" | "Documents" | "Reports" | "Settings";
 
 type Vehicle = {
   id: string;
   make: string;
   model: string;
+  nickname?: string;
   year: number;
   registration: string;
   vin: string;
   fuelType: FuelType;
-  ownershipStatus: VehicleStatus;
+  transmission?: Transmission;
+  engineSize?: string;
+  ownershipStatus: OwnershipType;
+  status?: VehicleStatus;
+  purchaseDate?: string;
+  purchasePrice?: number;
+  estimatedValue?: number;
+  assignedDriver?: string;
+  department?: string;
   currentOdometer: number;
+  registrationExpiry?: string;
+  insuranceExpiry?: string;
+  inspectionExpiry?: string;
+  notes?: string;
+  image?: string;
   archived?: boolean;
 };
 
@@ -29,9 +47,34 @@ type CostEntry = {
   type: CostType;
   vendor: string;
   amount: number;
+  vat?: number;
+  paymentMethod?: string;
+  invoiceNumber?: string;
   odometer: number;
+  driver?: string;
   notes: string;
+  attachment?: string;
+  status?: CostStatus;
   documentId?: string;
+  archived?: boolean;
+};
+
+type FuelEntry = {
+  id: string;
+  vehicleId: string;
+  date: string;
+  odometer: number;
+  quantity: number;
+  fuelType: FuelType;
+  pricePerUnit: number;
+  totalCost: number;
+  station: string;
+  fullTank: boolean;
+  distanceSinceLast: number;
+  economy: number;
+  costPerKm: number;
+  notes: string;
+  receipt?: string;
   archived?: boolean;
 };
 
@@ -41,10 +84,15 @@ type Trip = {
   date: string;
   start: string;
   end: string;
-  purpose: string;
+  purpose: TripPurpose;
+  startOdometer?: number;
+  endOdometer?: number;
   kilometers: number;
   driver: string;
   reimbursementRate: number;
+  reimbursementAmount?: number;
+  clientProject?: string;
+  approvalStatus?: "Draft" | "Submitted" | "Approved" | "Rejected";
   notes: string;
   archived?: boolean;
 };
@@ -56,8 +104,12 @@ type Inspection = {
   dueDate: string;
   completedDate?: string;
   result?: Result;
+  vendor?: string;
+  certificateNumber?: string;
+  expiryDate?: string;
   certificate?: string;
   reminderDays: number;
+  followUp?: string;
   archived?: boolean;
 };
 
@@ -66,10 +118,17 @@ type MaintenanceTask = {
   vehicleId: string;
   item: string;
   intervalKm: number;
+  intervalMonths?: number;
   lastDoneKm: number;
+  lastDoneDate?: string;
   nextDueKm: number;
   dueDate: string;
   status: TaskStatus;
+  vendor?: string;
+  partsCost?: number;
+  laborCost?: number;
+  warranty?: string;
+  attachment?: string;
   notes: string;
   archived?: boolean;
 };
@@ -89,14 +148,18 @@ type DocumentRecord = {
   type: string;
   title: string;
   fileName: string;
+  uploadDate?: string;
   expiryDate?: string;
   linkedTo?: string;
+  notes?: string;
+  reminderDays?: number;
   archived?: boolean;
 };
 
 type FleetState = {
   vehicles: Vehicle[];
   costs: CostEntry[];
+  fuel: FuelEntry[];
   trips: Trip[];
   inspections: Inspection[];
   maintenance: MaintenanceTask[];
@@ -105,11 +168,12 @@ type FleetState = {
   activeVehicleId: string;
 };
 
-const storageKey = "professional-vehicle-ledger-v1";
-const views: View[] = ["Dashboard", "Ledger", "Trips", "Inspections", "Maintenance", "Odometer", "Documents", "Analytics"];
-const costTypes: CostType[] = ["Fuel", "Maintenance", "Repairs", "Insurance", "Registration", "Tolls", "Parking", "Washing", "Tires", "Other"];
+const storageKey = "professional-vehicle-ledger-v2";
+const views: View[] = ["Dashboard", "Vehicles", "Ledger", "Trips", "Fuel", "Maintenance", "Inspections", "Documents", "Reports", "Settings"];
+const costTypes: CostType[] = ["Fuel", "Maintenance", "Repairs", "Insurance", "Registration", "Technical inspections", "Road tax", "Tolls", "Parking", "Car wash", "Tires", "Fines", "Leasing", "Depreciation", "Accessories", "Emergency", "Other"];
 const fuelTypes: FuelType[] = ["Petrol", "Diesel", "Hybrid", "Electric"];
-const statuses: VehicleStatus[] = ["Owned", "Leased", "Financed", "Archived"];
+const ownershipTypes: OwnershipType[] = ["Owned", "Leased", "Rented", "Financed"];
+const statuses: VehicleStatus[] = ["Active", "Inactive", "Sold", "Under repair", "Archived"];
 const today = new Date().toISOString().slice(0, 10);
 const eur = new Intl.NumberFormat("sl-SI", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
 const eur2 = new Intl.NumberFormat("sl-SI", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
@@ -118,33 +182,39 @@ const km = new Intl.NumberFormat("sl-SI", { maximumFractionDigits: 0 });
 const seed: FleetState = {
   activeVehicleId: "veh-1",
   vehicles: [
-    { id: "veh-1", make: "Cupra", model: "Formentor VZ", year: 2022, registration: "LJ FM-221", vin: "VSSZZZKMZNR000221", fuelType: "Petrol", ownershipStatus: "Owned", currentOdometer: 96153 },
-    { id: "veh-2", make: "Volkswagen", model: "Crafter 35", year: 2020, registration: "LJ FL-918", vin: "WV1ZZZSYZL9012455", fuelType: "Diesel", ownershipStatus: "Leased", currentOdometer: 144820 },
-    { id: "veh-3", make: "Tesla", model: "Model Y", year: 2023, registration: "LJ EV-404", vin: "XP7YGCEK8PB014404", fuelType: "Electric", ownershipStatus: "Financed", currentOdometer: 38240 },
+    { id: "veh-1", nickname: "Sales Cupra", make: "Cupra", model: "Formentor VZ", year: 2022, registration: "LJ FM-221", vin: "VSSZZZKMZNR000221", fuelType: "Petrol", transmission: "Automatic", engineSize: "2.0 TSI", ownershipStatus: "Owned", status: "Active", purchaseDate: "2023-04-15", purchasePrice: 36500, estimatedValue: 25500, assignedDriver: "Simon", department: "Management", currentOdometer: 96153, registrationExpiry: "2026-06-18", insuranceExpiry: "2027-01-02", inspectionExpiry: "2026-06-18", notes: "Primary management and client vehicle.", image: "cupra.jpg" },
+    { id: "veh-2", nickname: "Delivery Van", make: "Volkswagen", model: "Crafter 35", year: 2020, registration: "LJ FL-918", vin: "WV1ZZZSYZL9012455", fuelType: "Diesel", transmission: "Manual", engineSize: "2.0 TDI", ownershipStatus: "Leased", status: "Under repair", purchaseDate: "2021-02-01", purchasePrice: 0, estimatedValue: 18500, assignedDriver: "Marko", department: "Logistics", currentOdometer: 144820, registrationExpiry: "2026-08-12", insuranceExpiry: "2026-10-01", inspectionExpiry: "2026-05-20", notes: "High-mileage delivery vehicle.", image: "crafter.jpg" },
+    { id: "veh-3", nickname: "EV Shuttle", make: "Tesla", model: "Model Y", year: 2023, registration: "LJ EV-404", vin: "XP7YGCEK8PB014404", fuelType: "Electric", transmission: "Single-speed", engineSize: "Dual motor", ownershipStatus: "Financed", status: "Active", purchaseDate: "2024-01-10", purchasePrice: 52900, estimatedValue: 43800, assignedDriver: "Ana", department: "Sales", currentOdometer: 38240, registrationExpiry: "2026-09-02", insuranceExpiry: "2027-04-02", inspectionExpiry: "2026-09-02", notes: "Low operating cost EV for regional trips.", image: "model-y.jpg" },
   ],
   costs: [
-    { id: "c1", vehicleId: "veh-1", date: "2026-05-18", type: "Fuel", vendor: "Petrol", amount: 82.4, odometer: 96153, notes: "Premium fuel" },
-    { id: "c2", vehicleId: "veh-1", date: "2026-05-06", type: "Maintenance", vendor: "Porsche Inter Auto", amount: 642, odometer: 94880, notes: "Oil, filters, inspection", documentId: "d4" },
-    { id: "c3", vehicleId: "veh-2", date: "2026-05-14", type: "Tolls", vendor: "DARS", amount: 126, odometer: 144210, notes: "Highway tolls" },
-    { id: "c4", vehicleId: "veh-2", date: "2026-04-28", type: "Repairs", vendor: "Fleet Service", amount: 1180, odometer: 143020, notes: "Brake pads and discs" },
-    { id: "c5", vehicleId: "veh-3", date: "2026-05-20", type: "Fuel", vendor: "Ionity", amount: 31.7, odometer: 38240, notes: "Charging session" },
-    { id: "c6", vehicleId: "veh-3", date: "2026-04-02", type: "Insurance", vendor: "Zavarovalnica", amount: 920, odometer: 36100, notes: "Annual premium", documentId: "d2" },
+    { id: "c1", vehicleId: "veh-1", date: "2026-05-18", type: "Fuel", vendor: "Petrol", amount: 82.4, vat: 14.86, paymentMethod: "Company card", invoiceNumber: "P-2026-7781", odometer: 96153, driver: "Simon", notes: "Premium fuel", attachment: "petrol-receipt.jpg", status: "Paid" },
+    { id: "c2", vehicleId: "veh-1", date: "2026-05-06", type: "Maintenance", vendor: "Porsche Inter Auto", amount: 642, vat: 115.7, paymentMethod: "Bank transfer", invoiceNumber: "PIA-44192", odometer: 94880, driver: "Simon", notes: "Oil, filters, inspection", attachment: "cupra-service-may.pdf", status: "Approved", documentId: "d4" },
+    { id: "c3", vehicleId: "veh-2", date: "2026-05-14", type: "Tolls", vendor: "DARS", amount: 126, vat: 22.7, paymentMethod: "Fleet card", invoiceNumber: "DARS-5542", odometer: 144210, driver: "Marko", notes: "Highway tolls", status: "Paid" },
+    { id: "c4", vehicleId: "veh-2", date: "2026-04-28", type: "Repairs", vendor: "Fleet Service", amount: 1180, vat: 212.78, paymentMethod: "Bank transfer", invoiceNumber: "FS-22018", odometer: 143020, driver: "Marko", notes: "Brake pads and discs", attachment: "crafter-brakes.pdf", status: "Approved" },
+    { id: "c5", vehicleId: "veh-3", date: "2026-05-20", type: "Fuel", vendor: "Ionity", amount: 31.7, vat: 5.72, paymentMethod: "EV card", invoiceNumber: "ION-9921", odometer: 38240, driver: "Ana", notes: "Charging session", status: "Paid" },
+    { id: "c6", vehicleId: "veh-3", date: "2026-04-02", type: "Insurance", vendor: "Zavarovalnica", amount: 920, vat: 0, paymentMethod: "Bank transfer", invoiceNumber: "INS-2026-443", odometer: 36100, driver: "Ana", notes: "Annual premium", attachment: "tesla-insurance.pdf", status: "Paid", documentId: "d2" },
+    { id: "c7", vehicleId: "veh-2", date: "2026-05-03", type: "Car wash", vendor: "Avtopralnica BTC", amount: 18, vat: 3.25, paymentMethod: "Cash", invoiceNumber: "CW-118", odometer: 142840, driver: "Marko", notes: "Exterior wash", status: "Approved" },
+  ],
+  fuel: [
+    { id: "f1", vehicleId: "veh-1", date: "2026-05-18", odometer: 96153, quantity: 54.2, fuelType: "Petrol", pricePerUnit: 1.52, totalCost: 82.4, station: "Petrol", fullTank: true, distanceSinceLast: 641, economy: 8.45, costPerKm: 0.13, notes: "Full tank", receipt: "petrol-receipt.jpg" },
+    { id: "f2", vehicleId: "veh-2", date: "2026-05-11", odometer: 143940, quantity: 72.8, fuelType: "Diesel", pricePerUnit: 1.43, totalCost: 104.1, station: "OMV", fullTank: true, distanceSinceLast: 612, economy: 11.9, costPerKm: 0.17, notes: "Delivery route refuel", receipt: "omv-van.pdf" },
+    { id: "f3", vehicleId: "veh-3", date: "2026-05-20", odometer: 38240, quantity: 43.1, fuelType: "Electric", pricePerUnit: 0.74, totalCost: 31.7, station: "Ionity", fullTank: false, distanceSinceLast: 286, economy: 15.1, costPerKm: 0.11, notes: "Fast charge", receipt: "ionity.pdf" },
   ],
   trips: [
-    { id: "t1", vehicleId: "veh-2", date: "2026-05-22", start: "Ljubljana", end: "Maribor", purpose: "Client delivery", kilometers: 132, driver: "Marko", reimbursementRate: 0.43, notes: "Materials delivered" },
-    { id: "t2", vehicleId: "veh-1", date: "2026-05-21", start: "Ljubljana", end: "Koper", purpose: "Site visit", kilometers: 214, driver: "Simon", reimbursementRate: 0.43, notes: "Inspection meeting" },
-    { id: "t3", vehicleId: "veh-3", date: "2026-05-18", start: "Celje", end: "Zagreb", purpose: "Sales meeting", kilometers: 238, driver: "Ana", reimbursementRate: 0.39, notes: "Cross-border trip" },
+    { id: "t1", vehicleId: "veh-2", date: "2026-05-22", start: "Ljubljana", end: "Maribor", purpose: "Delivery", startOdometer: 144120, endOdometer: 144252, kilometers: 132, driver: "Marko", reimbursementRate: 0.43, reimbursementAmount: 56.76, clientProject: "Client A materials", approvalStatus: "Approved", notes: "Materials delivered" },
+    { id: "t2", vehicleId: "veh-1", date: "2026-05-21", start: "Ljubljana", end: "Koper", purpose: "Business", startOdometer: 95892, endOdometer: 96106, kilometers: 214, driver: "Simon", reimbursementRate: 0.43, reimbursementAmount: 92.02, clientProject: "Coastal site visit", approvalStatus: "Submitted", notes: "Inspection meeting" },
+    { id: "t3", vehicleId: "veh-3", date: "2026-05-18", start: "Celje", end: "Zagreb", purpose: "Business", startOdometer: 37998, endOdometer: 38236, kilometers: 238, driver: "Ana", reimbursementRate: 0.39, reimbursementAmount: 92.82, clientProject: "Sales meeting", approvalStatus: "Approved", notes: "Cross-border trip" },
   ],
   inspections: [
-    { id: "i1", vehicleId: "veh-1", type: "Annual technical inspection", dueDate: "2026-06-18", completedDate: "2025-06-18", result: "Passed", certificate: "inspection-cupra.pdf", reminderDays: 30 },
-    { id: "i2", vehicleId: "veh-2", type: "Commercial safety check", dueDate: "2026-05-20", completedDate: "2025-11-20", result: "Advisory", certificate: "crafter-safety.pdf", reminderDays: 14 },
-    { id: "i3", vehicleId: "veh-3", type: "Registration inspection", dueDate: "2026-09-02", completedDate: "2025-09-02", result: "Passed", certificate: "model-y-inspection.pdf", reminderDays: 30 },
+    { id: "i1", vehicleId: "veh-1", type: "Annual technical inspection", dueDate: "2026-06-18", completedDate: "2025-06-18", result: "Passed", vendor: "AMZS", certificateNumber: "TI-2025-1882", expiryDate: "2026-06-18", certificate: "inspection-cupra.pdf", reminderDays: 30, followUp: "Renew registration after pass" },
+    { id: "i2", vehicleId: "veh-2", type: "Commercial safety check", dueDate: "2026-05-20", completedDate: "2025-11-20", result: "Conditional", vendor: "Fleet Compliance", certificateNumber: "CS-8841", expiryDate: "2026-05-20", certificate: "crafter-safety.pdf", reminderDays: 14, followUp: "Brake follow-up required" },
+    { id: "i3", vehicleId: "veh-3", type: "Registration inspection", dueDate: "2026-09-02", completedDate: "2025-09-02", result: "Passed", vendor: "Technical Center Ljubljana", certificateNumber: "EV-5529", expiryDate: "2026-09-02", certificate: "model-y-inspection.pdf", reminderDays: 30, followUp: "None" },
   ],
   maintenance: [
-    { id: "m1", vehicleId: "veh-1", item: "Oil change", intervalKm: 15000, lastDoneKm: 94880, nextDueKm: 109880, dueDate: "2026-10-10", status: "Scheduled", notes: "Use 0W-30 approved oil" },
-    { id: "m2", vehicleId: "veh-2", item: "Brake check", intervalKm: 20000, lastDoneKm: 124000, nextDueKm: 144000, dueDate: "2026-05-10", status: "Overdue", notes: "Heavy-use van" },
-    { id: "m3", vehicleId: "veh-3", item: "Tire rotation", intervalKm: 12000, lastDoneKm: 28000, nextDueKm: 40000, dueDate: "2026-06-01", status: "Due soon", notes: "Check rear wear" },
-    { id: "m4", vehicleId: "veh-1", item: "Cabin filter", intervalKm: 30000, lastDoneKm: 94880, nextDueKm: 124880, dueDate: "2027-02-01", status: "Scheduled", notes: "Combine with service" },
+    { id: "m1", vehicleId: "veh-1", item: "Oil change", intervalKm: 15000, intervalMonths: 12, lastDoneKm: 94880, lastDoneDate: "2026-05-06", nextDueKm: 109880, dueDate: "2026-10-10", status: "Upcoming", vendor: "Porsche Inter Auto", partsCost: 180, laborCost: 120, warranty: "12 months", notes: "Use 0W-30 approved oil" },
+    { id: "m2", vehicleId: "veh-2", item: "Brake check", intervalKm: 20000, intervalMonths: 6, lastDoneKm: 124000, lastDoneDate: "2025-10-12", nextDueKm: 144000, dueDate: "2026-05-10", status: "Overdue", vendor: "Fleet Service", partsCost: 420, laborCost: 260, warranty: "Parts warranty 24 months", notes: "Heavy-use van" },
+    { id: "m3", vehicleId: "veh-3", item: "Tire rotation", intervalKm: 12000, intervalMonths: 6, lastDoneKm: 28000, lastDoneDate: "2025-12-11", nextDueKm: 40000, dueDate: "2026-06-01", status: "Due soon", vendor: "EV Tire Center", partsCost: 0, laborCost: 55, warranty: "N/A", notes: "Check rear wear" },
+    { id: "m4", vehicleId: "veh-1", item: "Cabin filter", intervalKm: 30000, intervalMonths: 24, lastDoneKm: 94880, lastDoneDate: "2026-05-06", nextDueKm: 124880, dueDate: "2027-02-01", status: "Upcoming", vendor: "Porsche Inter Auto", partsCost: 45, laborCost: 35, warranty: "12 months", notes: "Combine with service" },
   ],
   odometer: [
     { id: "o1", vehicleId: "veh-1", date: "2026-05-01", odometer: 94380, driver: "Simon", notes: "Month start" },
@@ -155,10 +225,10 @@ const seed: FleetState = {
     { id: "o6", vehicleId: "veh-3", date: "2026-05-27", odometer: 38240, driver: "Ana", notes: "Current" },
   ],
   documents: [
-    { id: "d1", vehicleId: "veh-1", type: "Registration", title: "Cupra registration", fileName: "cupra-registration.pdf", expiryDate: "2026-06-18", linkedTo: "i1" },
-    { id: "d2", vehicleId: "veh-3", type: "Insurance", title: "Model Y insurance", fileName: "tesla-insurance.pdf", expiryDate: "2027-04-02" },
-    { id: "d3", vehicleId: "veh-2", type: "Warranty", title: "Crafter extended warranty", fileName: "crafter-warranty.pdf", expiryDate: "2026-12-31" },
-    { id: "d4", vehicleId: "veh-1", type: "Invoice", title: "Cupra May service invoice", fileName: "cupra-service-may.pdf", linkedTo: "c2" },
+    { id: "d1", vehicleId: "veh-1", type: "Registration", title: "Cupra registration", fileName: "cupra-registration.pdf", uploadDate: "2025-06-18", expiryDate: "2026-06-18", linkedTo: "i1", notes: "Current registration document", reminderDays: 30 },
+    { id: "d2", vehicleId: "veh-3", type: "Insurance", title: "Model Y insurance", fileName: "tesla-insurance.pdf", uploadDate: "2026-04-02", expiryDate: "2027-04-02", notes: "Annual policy", reminderDays: 45 },
+    { id: "d3", vehicleId: "veh-2", type: "Warranty", title: "Crafter extended warranty", fileName: "crafter-warranty.pdf", uploadDate: "2024-12-31", expiryDate: "2026-12-31", notes: "Lease warranty papers", reminderDays: 45 },
+    { id: "d4", vehicleId: "veh-1", type: "Invoice", title: "Cupra May service invoice", fileName: "cupra-service-may.pdf", uploadDate: "2026-05-06", linkedTo: "c2", notes: "Service receipt", reminderDays: 0 },
   ],
 };
 
@@ -199,8 +269,9 @@ function download(filename: string, content: string, type = "text/csv") {
 
 function badgeTone(value: string) {
   if (["Overdue", "Failed", "Expired"].includes(value)) return "bg-rose-50 text-rose-700 ring-rose-200";
-  if (["Due soon", "Advisory", "Leased", "Financed"].includes(value)) return "bg-amber-50 text-amber-700 ring-amber-200";
-  if (["Complete", "Passed", "Owned"].includes(value)) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  if (["Due soon", "Conditional", "Leased", "Financed", "Under repair", "Draft", "Pending"].includes(value)) return "bg-amber-50 text-amber-700 ring-amber-200";
+  if (["Completed", "Passed", "Owned", "Active", "Paid", "Approved"].includes(value)) return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+  if (["Archived", "Inactive", "Sold", "Rejected"].includes(value)) return "bg-slate-200 text-slate-700 ring-slate-300";
   return "bg-slate-100 text-slate-700 ring-slate-200";
 }
 
@@ -308,7 +379,8 @@ function App() {
       registration: String(form.get("registration") || "UNREGISTERED"),
       vin: String(form.get("vin") || "VIN pending"),
       fuelType: String(form.get("fuelType") || "Petrol") as FuelType,
-      ownershipStatus: String(form.get("ownershipStatus") || "Owned") as VehicleStatus,
+      ownershipStatus: String(form.get("ownershipStatus") || "Owned") as OwnershipType,
+      status: "Active",
       currentOdometer: Number(form.get("currentOdometer") || 0),
     };
     persist({ ...state, activeVehicleId: vehicle.id, vehicles: [...state.vehicles, vehicle] });
@@ -330,10 +402,66 @@ function App() {
       type: String(form.get("type") || "Other") as CostType,
       vendor: String(form.get("vendor") || "Unknown vendor"),
       amount: Number(form.get("amount") || 0),
+      vat: Number(form.get("vat") || 0),
+      paymentMethod: String(form.get("paymentMethod") || ""),
+      invoiceNumber: String(form.get("invoiceNumber") || ""),
       odometer: Number(form.get("odometer") || activeVehicle.currentOdometer),
+      driver: String(form.get("driver") || activeVehicle.assignedDriver || ""),
       notes: String(form.get("notes") || ""),
+      attachment: String(form.get("attachment") || ""),
+      status: String(form.get("status") || "Draft") as CostStatus,
     };
     persist({ ...state, costs: [cost, ...state.costs] });
+    event.currentTarget.reset();
+  }
+
+  function addFuel(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const odometer = Number(form.get("odometer") || activeVehicle.currentOdometer);
+    const quantity = Number(form.get("quantity") || 0);
+    const pricePerUnit = Number(form.get("pricePerUnit") || 0);
+    const totalCost = Number(form.get("totalCost") || quantity * pricePerUnit);
+    const previous = state.fuel
+      .filter((item) => !item.archived && item.vehicleId === activeVehicle.id && item.odometer < odometer)
+      .sort((a, b) => b.odometer - a.odometer)[0];
+    const distanceSinceLast = Math.max(odometer - (previous?.odometer || activeVehicle.currentOdometer), 0);
+    const fuel: FuelEntry = {
+      id: uid("fuel"),
+      vehicleId: activeVehicle.id,
+      date: String(form.get("date") || today),
+      odometer,
+      quantity,
+      fuelType: String(form.get("fuelType") || activeVehicle.fuelType) as FuelType,
+      pricePerUnit,
+      totalCost,
+      station: String(form.get("station") || "Unknown station"),
+      fullTank: form.get("fullTank") === "on",
+      distanceSinceLast,
+      economy: distanceSinceLast ? (quantity / distanceSinceLast) * 100 : 0,
+      costPerKm: distanceSinceLast ? totalCost / distanceSinceLast : 0,
+      notes: String(form.get("notes") || ""),
+      receipt: String(form.get("receipt") || ""),
+    };
+    const cost: CostEntry = {
+      id: uid("cost"),
+      vehicleId: activeVehicle.id,
+      date: fuel.date,
+      type: "Fuel",
+      vendor: fuel.station,
+      amount: fuel.totalCost,
+      odometer: fuel.odometer,
+      driver: activeVehicle.assignedDriver || "",
+      notes: fuel.notes || `${fuel.quantity} ${fuel.fuelType === "Electric" ? "kWh" : "L"} at ${eur2.format(fuel.pricePerUnit)}`,
+      attachment: fuel.receipt,
+      status: "Paid",
+    };
+    persist({
+      ...state,
+      fuel: [fuel, ...state.fuel],
+      costs: [cost, ...state.costs],
+      vehicles: state.vehicles.map((vehicle) => vehicle.id === activeVehicle.id ? { ...vehicle, currentOdometer: Math.max(vehicle.currentOdometer, odometer) } : vehicle),
+    });
     event.currentTarget.reset();
   }
 
@@ -346,7 +474,7 @@ function App() {
       date: String(form.get("date") || today),
       start: String(form.get("start") || ""),
       end: String(form.get("end") || ""),
-      purpose: String(form.get("purpose") || "Business"),
+      purpose: String(form.get("purpose") || "Business") as TripPurpose,
       kilometers: Number(form.get("kilometers") || 0),
       driver: String(form.get("driver") || ""),
       reimbursementRate: Number(form.get("reimbursementRate") || 0),
@@ -384,7 +512,7 @@ function App() {
       lastDoneKm: Number(form.get("lastDoneKm") || activeVehicle.currentOdometer),
       nextDueKm: Number(form.get("nextDueKm") || activeVehicle.currentOdometer + 10000),
       dueDate: String(form.get("dueDate") || today),
-      status: String(form.get("status") || "Scheduled") as TaskStatus,
+      status: String(form.get("status") || "Upcoming") as TaskStatus,
       notes: String(form.get("notes") || ""),
     };
     persist({ ...state, maintenance: [task, ...state.maintenance] });
@@ -407,13 +535,13 @@ function App() {
   function addDocument(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const doc: DocumentRecord = { id: uid("doc"), vehicleId: activeVehicle.id, type: String(form.get("type") || "Document"), title: String(form.get("title") || "Document"), fileName: String(form.get("fileName") || "file.pdf"), expiryDate: String(form.get("expiryDate") || "") };
+    const doc: DocumentRecord = { id: uid("doc"), vehicleId: activeVehicle.id, type: String(form.get("type") || "Document"), title: String(form.get("title") || "Document"), fileName: String(form.get("fileName") || "file.pdf"), uploadDate: today, expiryDate: String(form.get("expiryDate") || ""), notes: String(form.get("notes") || ""), reminderDays: Number(form.get("reminderDays") || 30) };
     persist({ ...state, documents: [doc, ...state.documents] });
     event.currentTarget.reset();
   }
 
   function markMaintenanceDone(id: string) {
-    persist({ ...state, maintenance: state.maintenance.map((item) => item.id === id ? { ...item, status: "Complete", lastDoneKm: activeVehicle.currentOdometer, nextDueKm: activeVehicle.currentOdometer + item.intervalKm } : item) });
+    persist({ ...state, maintenance: state.maintenance.map((item) => item.id === id ? { ...item, status: "Completed", lastDoneKm: activeVehicle.currentOdometer, nextDueKm: activeVehicle.currentOdometer + item.intervalKm } : item) });
   }
 
   function markInspectionDone(id: string) {
@@ -468,7 +596,7 @@ function App() {
               </dl>
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button onClick={() => setEditingVehicle(activeVehicle)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Edit</button>
-                <button onClick={() => persist({ ...state, vehicles: state.vehicles.map((item) => item.id === activeVehicle.id ? { ...item, archived: true, ownershipStatus: "Archived" } : item) })} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">Archive</button>
+                <button onClick={() => persist({ ...state, vehicles: state.vehicles.map((item) => item.id === activeVehicle.id ? { ...item, archived: true, status: "Archived" } : item) })} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">Archive</button>
               </div>
             </Panel>
 
@@ -480,7 +608,7 @@ function App() {
                 <Field label="VIN"><TextInput name="vin" placeholder="Vehicle identification number" /></Field>
                 <div className="grid grid-cols-2 gap-2">
                   <Field label="Fuel"><SelectInput name="fuelType">{fuelTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field>
-                  <Field label="Status"><SelectInput name="ownershipStatus">{statuses.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field>
+                  <Field label="Ownership"><SelectInput name="ownershipStatus">{ownershipTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field>
                 </div>
                 <Field label="Current odometer"><TextInput name="currentOdometer" type="number" placeholder="0" /></Field>
                 <button className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white">Create vehicle</button>
@@ -496,14 +624,16 @@ function App() {
           </aside>
 
           <section className="grid gap-4">
-            {view === "Dashboard" && <Dashboard analytics={analytics} state={state} activeVehicle={activeVehicle} costs={activeCosts} trips={activeTrips} inspections={activeInspections} maintenance={activeMaintenance} />}
+            {view === "Dashboard" && <Dashboard analytics={analytics} state={state} activeVehicle={activeVehicle} costs={activeCosts} trips={activeTrips} inspections={activeInspections} maintenance={activeMaintenance} setView={setView} />}
             {view === "Ledger" && <LedgerView costs={filteredCosts} query={query} setQuery={setQuery} filter={costFilter} setFilter={setCostFilter} addCost={addCost} archive={archive} remove={remove} />}
             {view === "Trips" && <TripsView trips={activeTrips} addTrip={addTrip} archive={archive} remove={remove} />}
+            {view === "Vehicles" && <VehiclesView state={state} setActive={(id: string) => persist({ ...state, activeVehicleId: id })} restore={(id: string) => persist({ ...state, vehicles: state.vehicles.map((vehicle) => vehicle.id === id ? { ...vehicle, archived: false, status: "Active" } : vehicle) })} />}
             {view === "Inspections" && <InspectionsView inspections={activeInspections} addInspection={addInspection} archive={archive} remove={remove} markDone={markInspectionDone} />}
             {view === "Maintenance" && <MaintenanceView tasks={activeMaintenance} addMaintenance={addMaintenance} archive={archive} remove={remove} markDone={markMaintenanceDone} />}
-            {view === "Odometer" && <OdometerView points={activeOdometer} addOdometer={addOdometer} remove={remove} />}
+            {view === "Fuel" && <FuelView fuel={state.fuel.filter((item) => !item.archived && item.vehicleId === activeVehicle.id)} activeVehicle={activeVehicle} addFuel={addFuel} archive={archive} remove={remove} />}
             {view === "Documents" && <DocumentsView docs={activeDocuments} addDocument={addDocument} archive={archive} remove={remove} />}
-            {view === "Analytics" && <AnalyticsView state={state} activeVehicle={activeVehicle} analytics={analytics} />}
+            {view === "Reports" && <AnalyticsView state={state} activeVehicle={activeVehicle} analytics={analytics} />}
+            {view === "Settings" && <SettingsView state={state} onReset={() => persist(seed)} />}
           </section>
         </section>
       </div>
@@ -526,19 +656,29 @@ function Info({ label, value, wide }: { label: string; value: string; wide?: boo
   return <div className={wide ? "col-span-2" : ""}><dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 break-words font-semibold text-slate-800">{value}</dd></div>;
 }
 
-function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections, maintenance }: any) {
+function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections, maintenance, setView }: any) {
   const maxMonthly = Math.max(...analytics.monthlyByType.map((row: any) => row.total), 1);
+  const monthFuel = costs.filter((item: CostEntry) => item.type === "Fuel" && monthOf(item.date) === analytics.month).reduce((sum: number, item: CostEntry) => sum + item.amount, 0);
+  const monthMaintenance = costs.filter((item: CostEntry) => ["Maintenance", "Repairs", "Tires"].includes(item.type) && monthOf(item.date) === analytics.month).reduce((sum: number, item: CostEntry) => sum + item.amount, 0);
+  const expiringDocuments = state.documents.filter((doc: DocumentRecord) => !doc.archived && doc.expiryDate && daysUntil(doc.expiryDate) <= (doc.reminderDays || 30));
+  const attentionVehicles = state.vehicles.filter((vehicle: Vehicle) => !vehicle.archived && (vehicle.status === "Under repair" || daysUntil(vehicle.registrationExpiry || "2999-12-31") <= 30 || daysUntil(vehicle.insuranceExpiry || "2999-12-31") <= 30));
   return (
     <>
       <Panel>
-        <SectionTitle eyebrow="Operations snapshot" title="Current vehicle activity" />
+        <SectionTitle eyebrow="Operations snapshot" title="Current vehicle activity" action={<div className="flex flex-wrap gap-2">{(["Ledger", "Fuel", "Trips", "Maintenance", "Inspections", "Documents"] as View[]).map((item) => <button key={item} onClick={() => setView(item)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Add {item === "Ledger" ? "expense" : item}</button>)}</div>} />
         <div className="grid gap-3 lg:grid-cols-4">
           <SummaryCard label="Costs logged" value={String(costs.length)} detail={eur.format(costs.reduce((sum: number, item: CostEntry) => sum + item.amount, 0))} />
           <SummaryCard label="Trips logged" value={String(trips.length)} detail={`${km.format(trips.reduce((sum: number, item: Trip) => sum + item.kilometers, 0))} km`} />
           <SummaryCard label="Inspections" value={String(inspections.length)} detail={`${inspections.filter((item: Inspection) => daysUntil(item.dueDate) <= item.reminderDays).length} need attention`} />
-          <SummaryCard label="Maintenance" value={String(maintenance.length)} detail={`${maintenance.filter((item: MaintenanceTask) => item.status !== "Complete").length} open tasks`} />
+          <SummaryCard label="Maintenance" value={String(maintenance.length)} detail={`${maintenance.filter((item: MaintenanceTask) => item.status !== "Completed" && item.status !== "Skipped").length} open tasks`} />
         </div>
       </Panel>
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard label="Fuel this month" value={eur.format(monthFuel)} detail="Fuel and electric charging" />
+        <SummaryCard label="Service this month" value={eur.format(monthMaintenance)} detail="Maintenance, repairs, and tires" />
+        <SummaryCard label="Expiring documents" value={String(expiringDocuments.length)} detail="Inside reminder windows" />
+        <SummaryCard label="Vehicles needing attention" value={String(attentionVehicles.length)} detail="Repair, registration, or insurance risk" />
+      </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Panel>
           <SectionTitle eyebrow="Monthly spending" title={`${analytics.month} cost mix`} />
@@ -564,19 +704,36 @@ function LedgerView({ costs, query, setQuery, filter, setFilter, addCost, archiv
 }
 
 function CostForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <form onSubmit={onSubmit} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-7"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Type"><SelectInput name="type">{costTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Vendor"><TextInput name="vendor" placeholder="Supplier" /></Field><Field label="Amount"><TextInput name="amount" type="number" step="0.01" /></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><Field label="Notes"><TextInput name="notes" placeholder="Details" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add cost</button></form>;
+  return <form onSubmit={onSubmit} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-10"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Type"><SelectInput name="type">{costTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Vendor"><TextInput name="vendor" placeholder="Supplier" /></Field><Field label="Amount"><TextInput name="amount" type="number" step="0.01" /></Field><Field label="VAT"><TextInput name="vat" type="number" step="0.01" /></Field><Field label="Invoice"><TextInput name="invoiceNumber" placeholder="INV-001" /></Field><Field label="Payment"><TextInput name="paymentMethod" placeholder="Card" /></Field><Field label="Status"><SelectInput name="status"><option>Draft</option><option>Approved</option><option>Paid</option><option>Reimbursed</option><option>Rejected</option></SelectInput></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add cost</button><Field label="Notes"><TextInput name="notes" placeholder="Details" /></Field><Field label="Receipt"><TextInput name="attachment" placeholder="receipt.pdf" /></Field><Field label="Driver"><TextInput name="driver" placeholder="Driver" /></Field></form>;
 }
 
 function TripsView({ trips, addTrip, archive, remove }: any) {
   return <Panel><SectionTitle eyebrow="Trip log" title="Business, personal, and reimbursable travel" /><form onSubmit={addTrip} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-8"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Start"><TextInput name="start" /></Field><Field label="End"><TextInput name="end" /></Field><Field label="Purpose"><TextInput name="purpose" /></Field><Field label="Km"><TextInput name="kilometers" type="number" /></Field><Field label="Driver"><TextInput name="driver" /></Field><Field label="Rate"><TextInput name="reimbursementRate" type="number" step="0.01" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add trip</button></form><Table headers={["Date", "Route", "Purpose", "Km", "Driver", "Reimbursement", "Actions"]}>{trips.map((trip: Trip) => <tr key={trip.id}><td>{trip.date}</td><td>{trip.start} → {trip.end}</td><td>{trip.purpose}</td><td>{km.format(trip.kilometers)}</td><td>{trip.driver}</td><td>{eur2.format(trip.kilometers * trip.reimbursementRate)}</td><td><Actions onArchive={() => archive("trips", trip.id)} onDelete={() => remove("trips", trip.id)} /></td></tr>)}</Table></Panel>;
 }
 
+function VehiclesView({ state, setActive, restore }: any) {
+  const rows = state.vehicles.map((vehicle: Vehicle) => {
+    const costs = state.costs.filter((cost: CostEntry) => !cost.archived && cost.vehicleId === vehicle.id).reduce((sum: number, cost: CostEntry) => sum + cost.amount, 0);
+    const distance = state.trips.filter((trip: Trip) => !trip.archived && trip.vehicleId === vehicle.id).reduce((sum: number, trip: Trip) => sum + trip.kilometers, 0);
+    const nextMaintenance = state.maintenance.filter((item: MaintenanceTask) => !item.archived && item.vehicleId === vehicle.id).sort((a: MaintenanceTask, b: MaintenanceTask) => a.nextDueKm - b.nextDueKm)[0];
+    return { vehicle, costs, distance, nextMaintenance };
+  });
+  return <Panel><SectionTitle eyebrow="Vehicle register" title="Profiles, compliance, drivers, and ownership" /><Table headers={["Vehicle", "Status", "Driver", "Cost center", "Odometer", "Insurance", "Inspection", "Total cost", "Next service", "Actions"]}>{rows.map((row: any) => <tr key={row.vehicle.id} className={row.vehicle.archived ? "opacity-60" : ""}><td><strong>{row.vehicle.nickname || `${row.vehicle.year} ${row.vehicle.make} ${row.vehicle.model}`}</strong><p className="text-xs text-slate-500">{row.vehicle.registration} · {row.vehicle.vin}</p></td><td><div className="flex flex-wrap gap-1"><Badge>{row.vehicle.status || "Active"}</Badge><Badge>{row.vehicle.ownershipStatus}</Badge></div></td><td>{row.vehicle.assignedDriver || "Unassigned"}</td><td>{row.vehicle.department || "General"}</td><td>{km.format(row.vehicle.currentOdometer)} km</td><td>{row.vehicle.insuranceExpiry || "Missing"}</td><td>{row.vehicle.inspectionExpiry || "Missing"}</td><td className="font-bold">{eur.format(row.costs)}</td><td>{row.nextMaintenance ? `${row.nextMaintenance.item} at ${km.format(row.nextMaintenance.nextDueKm)} km` : "No schedule"}</td><td>{row.vehicle.archived ? <button onClick={() => restore(row.vehicle.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white">Restore</button> : <button onClick={() => setActive(row.vehicle.id)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700">Open</button>}</td></tr>)}</Table></Panel>;
+}
+
+function FuelView({ fuel, activeVehicle, addFuel, archive, remove }: any) {
+  const totalCost = fuel.reduce((sum: number, item: FuelEntry) => sum + item.totalCost, 0);
+  const totalQuantity = fuel.reduce((sum: number, item: FuelEntry) => sum + item.quantity, 0);
+  const totalDistance = fuel.reduce((sum: number, item: FuelEntry) => sum + item.distanceSinceLast, 0);
+  return <Panel><SectionTitle eyebrow="Fuel and charging" title="Consumption, fill-ups, and energy cost" /><div className="mb-4 grid gap-3 md:grid-cols-3"><SummaryCard label="Energy spend" value={eur.format(totalCost)} detail={`${fuel.length} fuel or charging sessions`} /><SummaryCard label={activeVehicle.fuelType === "Electric" ? "kWh charged" : "Liters purchased"} value={km.format(totalQuantity)} detail={activeVehicle.fuelType === "Electric" ? "Electric charging" : "Fuel quantity"} /><SummaryCard label="Average economy" value={totalDistance ? `${(totalQuantity / totalDistance * 100).toFixed(1)} ${activeVehicle.fuelType === "Electric" ? "kWh" : "L"}/100 km` : "0"} detail={`${km.format(totalDistance)} km between entries`} /></div><form onSubmit={addFuel} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-10"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><Field label={activeVehicle.fuelType === "Electric" ? "kWh" : "Liters"}><TextInput name="quantity" type="number" step="0.01" /></Field><Field label="Unit price"><TextInput name="pricePerUnit" type="number" step="0.01" /></Field><Field label="Total"><TextInput name="totalCost" type="number" step="0.01" /></Field><Field label="Type"><SelectInput name="fuelType" defaultValue={activeVehicle.fuelType}>{fuelTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Station"><TextInput name="station" placeholder="Vendor" /></Field><Field label="Receipt"><TextInput name="receipt" placeholder="receipt.pdf" /></Field><Field label="Full tank"><input name="fullTank" type="checkbox" className="h-10 w-5 accent-teal-700" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add fuel</button><Field label="Notes"><TextInput name="notes" placeholder="Route, pump, charger" /></Field></form><Table headers={["Date", "Odometer", "Quantity", "Unit price", "Total", "Vendor", "Distance", "Economy", "Cost/km", "Actions"]}>{fuel.map((item: FuelEntry) => <tr key={item.id}><td>{item.date}</td><td>{km.format(item.odometer)} km</td><td>{item.quantity.toFixed(2)} {item.fuelType === "Electric" ? "kWh" : "L"}</td><td>{eur2.format(item.pricePerUnit)}</td><td className="font-bold">{eur2.format(item.totalCost)}</td><td>{item.station}</td><td>{km.format(item.distanceSinceLast)} km</td><td>{item.economy.toFixed(1)} {item.fuelType === "Electric" ? "kWh" : "L"}/100 km</td><td>{eur2.format(item.costPerKm)}</td><td><Actions onArchive={() => archive("fuel", item.id)} onDelete={() => remove("fuel", item.id)} /></td></tr>)}</Table>{!fuel.length ? <EmptyState title="No fuel records yet" detail="Add the first fill-up or charging session to calculate efficiency." /> : null}</Panel>;
+}
+
 function InspectionsView({ inspections, addInspection, archive, remove, markDone }: any) {
-  return <Panel><SectionTitle eyebrow="Inspection calendar" title="Due dates, certificates, and reminders" /><form onSubmit={addInspection} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-7"><Field label="Type"><TextInput name="type" /></Field><Field label="Due"><TextInput name="dueDate" type="date" /></Field><Field label="Completed"><TextInput name="completedDate" type="date" /></Field><Field label="Result"><SelectInput name="result"><option>Passed</option><option>Advisory</option><option>Failed</option></SelectInput></Field><Field label="Certificate"><TextInput name="certificate" placeholder="file.pdf" /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={30} /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add</button></form><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{inspections.map((item: Inspection) => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><strong>{item.type}</strong><Badge tone={badgeTone(daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Scheduled")}>{daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Scheduled"}</Badge></div><p className="mt-2 text-sm text-slate-500">Due {item.dueDate} · reminder {item.reminderDays} days</p><p className="text-sm text-slate-500">Certificate: {item.certificate || "Not uploaded"}</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => markDone(item.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white">Mark complete</button><Actions onArchive={() => archive("inspections", item.id)} onDelete={() => remove("inspections", item.id)} /></div></article>)}</div></Panel>;
+  return <Panel><SectionTitle eyebrow="Inspection calendar" title="Due dates, certificates, and reminders" /><form onSubmit={addInspection} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-7"><Field label="Type"><TextInput name="type" /></Field><Field label="Due"><TextInput name="dueDate" type="date" /></Field><Field label="Completed"><TextInput name="completedDate" type="date" /></Field><Field label="Result"><SelectInput name="result"><option>Passed</option><option>Conditional</option><option>Failed</option><option>Pending</option></SelectInput></Field><Field label="Certificate"><TextInput name="certificate" placeholder="file.pdf" /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={30} /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add</button></form><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{inspections.map((item: Inspection) => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><strong>{item.type}</strong><Badge tone={badgeTone(daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Pending")}>{daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Pending"}</Badge></div><p className="mt-2 text-sm text-slate-500">Due {item.dueDate} · reminder {item.reminderDays} days</p><p className="text-sm text-slate-500">Certificate: {item.certificate || "Not uploaded"}</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => markDone(item.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white">Mark complete</button><Actions onArchive={() => archive("inspections", item.id)} onDelete={() => remove("inspections", item.id)} /></div></article>)}</div></Panel>;
 }
 
 function MaintenanceView({ tasks, addMaintenance, archive, remove, markDone }: any) {
-  return <Panel><SectionTitle eyebrow="Maintenance schedule" title="Service tasks and mileage intervals" /><form onSubmit={addMaintenance} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-8"><Field label="Item"><TextInput name="item" placeholder="Oil change" /></Field><Field label="Interval km"><TextInput name="intervalKm" type="number" /></Field><Field label="Last done"><TextInput name="lastDoneKm" type="number" /></Field><Field label="Next due"><TextInput name="nextDueKm" type="number" /></Field><Field label="Due date"><TextInput name="dueDate" type="date" /></Field><Field label="Status"><SelectInput name="status"><option>Scheduled</option><option>Due soon</option><option>Overdue</option><option>Complete</option></SelectInput></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add</button></form><Table headers={["Item", "Status", "Last done", "Next due", "Due date", "Notes", "Actions"]}>{tasks.map((task: MaintenanceTask) => <tr key={task.id}><td className="font-bold">{task.item}</td><td><Badge>{task.status}</Badge></td><td>{km.format(task.lastDoneKm)} km</td><td>{km.format(task.nextDueKm)} km</td><td>{task.dueDate}</td><td>{task.notes}</td><td><div className="flex flex-wrap gap-2"><button onClick={() => markDone(task.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white">Complete</button><Actions onArchive={() => archive("maintenance", task.id)} onDelete={() => remove("maintenance", task.id)} /></div></td></tr>)}</Table></Panel>;
+  return <Panel><SectionTitle eyebrow="Maintenance schedule" title="Service tasks and mileage intervals" /><form onSubmit={addMaintenance} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-8"><Field label="Item"><TextInput name="item" placeholder="Oil change" /></Field><Field label="Interval km"><TextInput name="intervalKm" type="number" /></Field><Field label="Last done"><TextInput name="lastDoneKm" type="number" /></Field><Field label="Next due"><TextInput name="nextDueKm" type="number" /></Field><Field label="Due date"><TextInput name="dueDate" type="date" /></Field><Field label="Status"><SelectInput name="status"><option>Upcoming</option><option>Due soon</option><option>Overdue</option><option>Completed</option><option>Skipped</option></SelectInput></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add</button></form><Table headers={["Item", "Status", "Last done", "Next due", "Due date", "Notes", "Actions"]}>{tasks.map((task: MaintenanceTask) => <tr key={task.id}><td className="font-bold">{task.item}</td><td><Badge>{task.status}</Badge></td><td>{km.format(task.lastDoneKm)} km</td><td>{km.format(task.nextDueKm)} km</td><td>{task.dueDate}</td><td>{task.notes}</td><td><div className="flex flex-wrap gap-2"><button onClick={() => markDone(task.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white">Complete</button><Actions onArchive={() => archive("maintenance", task.id)} onDelete={() => remove("maintenance", task.id)} /></div></td></tr>)}</Table></Panel>;
 }
 
 function OdometerView({ points, addOdometer, remove }: any) {
@@ -584,7 +741,19 @@ function OdometerView({ points, addOdometer, remove }: any) {
 }
 
 function DocumentsView({ docs, addDocument, archive, remove }: any) {
-  return <Panel><SectionTitle eyebrow="Document vault" title="Registration, insurance, invoices, inspections, warranty papers" /><form onSubmit={addDocument} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-6"><Field label="Type"><TextInput name="type" placeholder="Insurance" /></Field><Field label="Title"><TextInput name="title" /></Field><Field label="File"><TextInput name="fileName" placeholder="file.pdf" /></Field><Field label="Expiry"><TextInput name="expiryDate" type="date" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white lg:col-span-2">Add document</button></form><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{docs.map((doc: DocumentRecord) => <article key={doc.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="mb-4 rounded-lg bg-slate-900 p-4 text-white"><span className="text-xs font-bold uppercase tracking-wide text-white/60">{doc.fileName.split(".").pop() || "doc"}</span><strong className="mt-8 block text-lg">{doc.type}</strong></div><strong>{doc.title}</strong><p className="mt-1 text-sm text-slate-500">{doc.fileName}</p><p className="text-sm text-slate-500">{doc.expiryDate ? `Expires ${doc.expiryDate}` : "No expiry"}</p><div className="mt-4"><Actions onArchive={() => archive("documents", doc.id)} onDelete={() => remove("documents", doc.id)} /></div></article>)}</div></Panel>;
+  return <Panel><SectionTitle eyebrow="Document vault" title="Registration, insurance, invoices, inspections, warranty papers" /><form onSubmit={addDocument} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-7"><Field label="Type"><SelectInput name="type"><option>Registration</option><option>Insurance</option><option>Inspection certificate</option><option>Service invoice</option><option>Fuel receipt</option><option>Warranty</option><option>Lease agreement</option><option>Tax document</option></SelectInput></Field><Field label="Title"><TextInput name="title" /></Field><Field label="File"><TextInput name="fileName" placeholder="file.pdf" /></Field><Field label="Expiry"><TextInput name="expiryDate" type="date" /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={30} /></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add document</button></form><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{docs.map((doc: DocumentRecord) => <article key={doc.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="mb-4 rounded-lg bg-slate-900 p-4 text-white"><span className="text-xs font-bold uppercase tracking-wide text-white/60">{doc.fileName.split(".").pop() || "doc"}</span><strong className="mt-8 block text-lg">{doc.type}</strong></div><strong>{doc.title}</strong><p className="mt-1 text-sm text-slate-500">{doc.fileName}</p><p className="text-sm text-slate-500">{doc.expiryDate ? `Expires ${doc.expiryDate}` : "No expiry"}</p><p className="text-sm text-slate-500">Uploaded {doc.uploadDate || "today"} · reminder {doc.reminderDays || 0} days</p><div className="mt-4"><Actions onArchive={() => archive("documents", doc.id)} onDelete={() => remove("documents", doc.id)} /></div></article>)}</div>{!docs.length ? <EmptyState title="No documents yet" detail="Add insurance, registration, invoices, or receipts to keep a complete vehicle file." /> : null}</Panel>;
+}
+
+function SettingsView({ state, onReset }: any) {
+  function exportJson() {
+    download("vehicle-ledger-backup.json", JSON.stringify(state, null, 2), "application/json");
+  }
+
+  function printReport() {
+    window.print();
+  }
+
+  return <Panel><SectionTitle eyebrow="Settings" title="Data, export, and prototype controls" /><div className="grid gap-4 lg:grid-cols-3"><article className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Local persistence</p><strong className="mt-2 block text-2xl">{state.vehicles.length} vehicles</strong><p className="mt-2 text-sm text-slate-600">This prototype saves to this browser with localStorage. Use the JSON backup before clearing browser data.</p></article><article className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Exports</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={exportJson} className="rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Download backup</button><button onClick={printReport} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700">Print / PDF</button></div></article><article className="rounded-xl border border-rose-200 bg-rose-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-rose-600">Reset sample data</p><p className="mt-2 text-sm text-slate-700">Restore the realistic demo fleet and clear all edits stored in this browser.</p><button onClick={onReset} className="mt-3 rounded-lg bg-rose-700 px-3 py-2 text-sm font-bold text-white">Reset demo</button></article></div></Panel>;
 }
 
 function AnalyticsView({ state, activeVehicle, analytics }: any) {
@@ -606,7 +775,7 @@ function Actions({ onArchive, onDelete }: { onArchive: () => void; onDelete: () 
 
 function VehicleEditor({ vehicle, onClose, onSave }: { vehicle: Vehicle; onClose: () => void; onSave: (vehicle: Vehicle) => void }) {
   const [draft, setDraft] = useState(vehicle);
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div className="w-full max-w-2xl rounded-2xl bg-white p-5 shadow-2xl"><SectionTitle eyebrow="Edit vehicle" title={`${vehicle.make} ${vehicle.model}`} /><div className="grid gap-3 md:grid-cols-2"><Field label="Make"><TextInput value={draft.make} onChange={(event) => setDraft({ ...draft, make: event.target.value })} /></Field><Field label="Model"><TextInput value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} /></Field><Field label="Year"><TextInput type="number" value={draft.year} onChange={(event) => setDraft({ ...draft, year: Number(event.target.value) })} /></Field><Field label="Registration"><TextInput value={draft.registration} onChange={(event) => setDraft({ ...draft, registration: event.target.value })} /></Field><Field label="VIN"><TextInput value={draft.vin} onChange={(event) => setDraft({ ...draft, vin: event.target.value })} /></Field><Field label="Odometer"><TextInput type="number" value={draft.currentOdometer} onChange={(event) => setDraft({ ...draft, currentOdometer: Number(event.target.value) })} /></Field><Field label="Fuel"><SelectInput value={draft.fuelType} onChange={(event) => setDraft({ ...draft, fuelType: event.target.value as FuelType })}>{fuelTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field><Field label="Status"><SelectInput value={draft.ownershipStatus} onChange={(event) => setDraft({ ...draft, ownershipStatus: event.target.value as VehicleStatus })}>{statuses.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field></div><div className="mt-5 flex justify-end gap-2"><button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">Cancel</button><button onClick={() => onSave(draft)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white">Save changes</button></div></div></div>;
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4"><div className="w-full max-w-3xl rounded-2xl bg-white p-5 shadow-2xl"><SectionTitle eyebrow="Edit vehicle" title={`${vehicle.make} ${vehicle.model}`} /><div className="grid gap-3 md:grid-cols-2"><Field label="Nickname"><TextInput value={draft.nickname || ""} onChange={(event) => setDraft({ ...draft, nickname: event.target.value })} /></Field><Field label="Make"><TextInput value={draft.make} onChange={(event) => setDraft({ ...draft, make: event.target.value })} /></Field><Field label="Model"><TextInput value={draft.model} onChange={(event) => setDraft({ ...draft, model: event.target.value })} /></Field><Field label="Year"><TextInput type="number" value={draft.year} onChange={(event) => setDraft({ ...draft, year: Number(event.target.value) })} /></Field><Field label="Registration"><TextInput value={draft.registration} onChange={(event) => setDraft({ ...draft, registration: event.target.value })} /></Field><Field label="VIN"><TextInput value={draft.vin} onChange={(event) => setDraft({ ...draft, vin: event.target.value })} /></Field><Field label="Odometer"><TextInput type="number" value={draft.currentOdometer} onChange={(event) => setDraft({ ...draft, currentOdometer: Number(event.target.value) })} /></Field><Field label="Fuel"><SelectInput value={draft.fuelType} onChange={(event) => setDraft({ ...draft, fuelType: event.target.value as FuelType })}>{fuelTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field><Field label="Transmission"><SelectInput value={draft.transmission || "Manual"} onChange={(event) => setDraft({ ...draft, transmission: event.target.value as Transmission })}><option>Manual</option><option>Automatic</option><option>CVT</option><option>Single-speed</option></SelectInput></Field><Field label="Engine"><TextInput value={draft.engineSize || ""} onChange={(event) => setDraft({ ...draft, engineSize: event.target.value })} /></Field><Field label="Ownership"><SelectInput value={draft.ownershipStatus} onChange={(event) => setDraft({ ...draft, ownershipStatus: event.target.value as OwnershipType })}>{ownershipTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field><Field label="Status"><SelectInput value={draft.status || "Active"} onChange={(event) => setDraft({ ...draft, status: event.target.value as VehicleStatus })}>{statuses.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field><Field label="Assigned driver"><TextInput value={draft.assignedDriver || ""} onChange={(event) => setDraft({ ...draft, assignedDriver: event.target.value })} /></Field><Field label="Department"><TextInput value={draft.department || ""} onChange={(event) => setDraft({ ...draft, department: event.target.value })} /></Field><Field label="Insurance expiry"><TextInput type="date" value={draft.insuranceExpiry || ""} onChange={(event) => setDraft({ ...draft, insuranceExpiry: event.target.value })} /></Field><Field label="Inspection expiry"><TextInput type="date" value={draft.inspectionExpiry || ""} onChange={(event) => setDraft({ ...draft, inspectionExpiry: event.target.value })} /></Field></div><Field label="Notes"><TextInput value={draft.notes || ""} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></Field><div className="mt-5 flex justify-end gap-2"><button onClick={onClose} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700">Cancel</button><button onClick={() => onSave(draft)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white">Save changes</button></div></div></div>;
 }
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
