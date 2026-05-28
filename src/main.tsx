@@ -276,27 +276,27 @@ function badgeTone(value: string) {
 }
 
 function Badge({ children, tone }: { children: React.ReactNode; tone?: string }) {
-  return <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ring-1 ${tone || badgeTone(String(children))}`}>{children}</span>;
+  return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ${tone || badgeTone(String(children))}`}>{children}</span>;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{label}{children}</label>;
+  return <label className="grid gap-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">{label}{children}</label>;
 }
 
 function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-100" />;
+  return <input {...props} className="h-9 rounded-md border border-slate-300 bg-white px-2.5 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />;
 }
 
 function SelectInput(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-teal-600 focus:ring-4 focus:ring-teal-100" />;
+  return <select {...props} className="h-9 rounded-md border border-slate-300 bg-white px-2.5 text-sm text-slate-900 outline-none transition focus:border-teal-600 focus:ring-2 focus:ring-teal-100" />;
 }
 
 function SectionTitle({ eyebrow, title, action }: { eyebrow: string; title: string; action?: React.ReactNode }) {
   return (
-    <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
       <div>
-        <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">{eyebrow}</p>
-        <h2 className="mt-1 text-xl font-bold text-slate-950">{title}</h2>
+        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{eyebrow}</p>
+        <h2 className="mt-0.5 text-lg font-semibold text-slate-950">{title}</h2>
       </div>
       {action}
     </div>
@@ -305,7 +305,7 @@ function SectionTitle({ eyebrow, title, action }: { eyebrow: string; title: stri
 
 function EmptyState({ title, detail }: { title: string; detail: string }) {
   return (
-    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center">
+    <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 px-5 py-6 text-center">
       <p className="text-sm font-bold text-slate-900">{title}</p>
       <p className="mt-1 text-sm text-slate-500">{detail}</p>
     </div>
@@ -558,25 +558,27 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 text-slate-900">
-      <div className="mx-auto grid w-full max-w-[1500px] gap-4 px-4 py-4 lg:px-6">
-        <header className="sticky top-0 z-20 -mx-4 border-b border-slate-200 bg-slate-100/90 px-4 py-3 backdrop-blur lg:-mx-6 lg:px-6">
-          <div className="grid gap-3 xl:grid-cols-[280px_minmax(280px,360px)_1fr_auto] xl:items-center">
+    <main className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="mx-auto grid w-full max-w-[1400px] gap-3 px-3 py-3 lg:px-5">
+        <header className="sticky top-0 z-20 rounded-xl border border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur">
+          <div className="grid gap-3 lg:grid-cols-[250px_minmax(260px,1fr)_auto] lg:items-center">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-slate-500">Vehicle ledger</p>
-              <h1 className="text-2xl font-black tracking-tight text-slate-950">Fleet operations dashboard</h1>
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-500">Vehicle ledger</p>
+              <h1 className="text-xl font-bold tracking-tight text-slate-950">Fleet operations dashboard</h1>
             </div>
             <SelectInput value={activeVehicle.id} onChange={(event) => persist({ ...state, activeVehicleId: event.target.value })}>
               {state.vehicles.filter((vehicle) => !vehicle.archived).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.year} {vehicle.make} {vehicle.model} · {vehicle.registration}</option>)}
             </SelectInput>
-            <nav className="flex gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1">
-              {views.map((item) => <button key={item} onClick={() => setView(item)} className={`shrink-0 rounded-lg px-3 py-2 text-sm font-bold ${view === item ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"}`}>{item}</button>)}
+            <button onClick={exportCsv} className="rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800">Export CSV</button>
+          </div>
+          <div className="mt-3">
+            <nav className="flex gap-1 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50 p-1">
+              {views.map((item) => <button key={item} onClick={() => setView(item)} className={`shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold ${view === item ? "bg-slate-950 text-white shadow-sm" : "text-slate-600 hover:bg-white hover:text-slate-950"}`}>{item}</button>)}
             </nav>
-            <button onClick={exportCsv} className="rounded-lg bg-teal-700 px-4 py-2 text-sm font-bold text-white hover:bg-teal-800">Export CSV</button>
           </div>
         </header>
 
-        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
           <Kpi label="Monthly costs" value={eur.format(analytics.monthlyCost)} detail={analytics.month} />
           <Kpi label="Km driven" value={`${km.format(analytics.vehicleKm)} km`} detail={`${km.format(analytics.fleetKm)} fleet km`} />
           <Kpi label="Upcoming inspections" value={String(analytics.inspectionsDue.length)} detail="Due or inside reminder window" tone="amber" />
@@ -584,8 +586,8 @@ function App() {
           <Kpi label="Cost per km" value={eur2.format(analytics.vehicleCost / Math.max(analytics.vehicleKm, 1))} detail={`${eur.format(analytics.vehicleCost)} total on selected vehicle`} />
         </section>
 
-        <section className="grid gap-4 xl:grid-cols-[330px_minmax(0,1fr)]">
-          <aside className="grid gap-4 self-start">
+        <section className="grid gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
+          <aside className="grid gap-3 self-start">
             <Panel>
               <SectionTitle eyebrow="Vehicle profile" title={`${activeVehicle.year} ${activeVehicle.make} ${activeVehicle.model}`} action={<Badge>{activeVehicle.ownershipStatus}</Badge>} />
               <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -595,14 +597,15 @@ function App() {
                 <Info label="VIN" value={activeVehicle.vin} wide />
               </dl>
               <div className="mt-4 grid grid-cols-2 gap-2">
-                <button onClick={() => setEditingVehicle(activeVehicle)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Edit</button>
-                <button onClick={() => persist({ ...state, vehicles: state.vehicles.map((item) => item.id === activeVehicle.id ? { ...item, archived: true, status: "Archived" } : item) })} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-bold text-rose-700">Archive</button>
+                <button onClick={() => setEditingVehicle(activeVehicle)} className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Edit</button>
+                <button onClick={() => persist({ ...state, vehicles: state.vehicles.map((item) => item.id === activeVehicle.id ? { ...item, archived: true, status: "Archived" } : item) })} className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700">Archive</button>
               </div>
             </Panel>
 
             <Panel>
-              <SectionTitle eyebrow="Add vehicle" title="New profile" />
-              <form onSubmit={addVehicle} className="grid gap-3">
+              <details>
+                <summary className="cursor-pointer list-none rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800">Add vehicle profile</summary>
+              <form onSubmit={addVehicle} className="mt-3 grid gap-3">
                 <div className="grid grid-cols-2 gap-2"><Field label="Make"><TextInput name="make" placeholder="Toyota" /></Field><Field label="Model"><TextInput name="model" placeholder="Hilux" /></Field></div>
                 <div className="grid grid-cols-2 gap-2"><Field label="Year"><TextInput name="year" type="number" placeholder="2024" /></Field><Field label="Registration"><TextInput name="registration" placeholder="LJ AB-123" /></Field></div>
                 <Field label="VIN"><TextInput name="vin" placeholder="Vehicle identification number" /></Field>
@@ -611,8 +614,9 @@ function App() {
                   <Field label="Ownership"><SelectInput name="ownershipStatus">{ownershipTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field>
                 </div>
                 <Field label="Current odometer"><TextInput name="currentOdometer" type="number" placeholder="0" /></Field>
-                <button className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white">Create vehicle</button>
+                <button className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Create vehicle</button>
               </form>
+              </details>
             </Panel>
 
             <Panel>
@@ -644,16 +648,16 @@ function App() {
 }
 
 function Panel({ children }: { children: React.ReactNode }) {
-  return <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">{children}</section>;
+  return <section className="self-start rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">{children}</section>;
 }
 
 function Kpi({ label, value, detail, tone = "slate" }: { label: string; value: string; detail: string; tone?: "slate" | "amber" | "rose" | "emerald" }) {
-  const colors = { slate: "border-slate-200 bg-white", amber: "border-amber-200 bg-amber-50", rose: "border-rose-200 bg-rose-50", emerald: "border-emerald-200 bg-emerald-50" };
-  return <article className={`min-h-28 rounded-2xl border p-4 shadow-sm ${colors[tone]}`}><p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">{label}</p><strong className="mt-3 block text-3xl font-black text-slate-950">{value}</strong><span className="mt-1 block text-sm text-slate-500">{detail}</span></article>;
+  const colors = { slate: "border-l-slate-400", amber: "border-l-amber-400", rose: "border-l-rose-400", emerald: "border-l-emerald-500" };
+  return <article className={`min-h-24 rounded-xl border border-l-4 border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${colors[tone]}`}><p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500">{label}</p><strong className="mt-2 block text-2xl font-bold text-slate-950">{value}</strong><span className="mt-1 block text-sm leading-5 text-slate-500">{detail}</span></article>;
 }
 
 function Info({ label, value, wide }: { label: string; value: string; wide?: boolean }) {
-  return <div className={wide ? "col-span-2" : ""}><dt className="text-xs font-bold uppercase tracking-wide text-slate-400">{label}</dt><dd className="mt-1 break-words font-semibold text-slate-800">{value}</dd></div>;
+  return <div className={wide ? "col-span-2" : ""}><dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">{label}</dt><dd className="mt-1 break-words font-medium text-slate-800">{value}</dd></div>;
 }
 
 function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections, maintenance, setView }: any) {
@@ -665,29 +669,29 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
   return (
     <>
       <Panel>
-        <SectionTitle eyebrow="Operations snapshot" title="Current vehicle activity" action={<div className="flex flex-wrap gap-2">{(["Ledger", "Fuel", "Trips", "Maintenance", "Inspections", "Documents"] as View[]).map((item) => <button key={item} onClick={() => setView(item)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">Add {item === "Ledger" ? "expense" : item}</button>)}</div>} />
-        <div className="grid gap-3 lg:grid-cols-4">
+        <SectionTitle eyebrow="Operations snapshot" title="Current vehicle activity" action={<div className="flex flex-wrap gap-2">{(["Ledger", "Fuel", "Trips", "Maintenance", "Inspections", "Documents"] as View[]).map((item) => <button key={item} onClick={() => setView(item)} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Add {item === "Ledger" ? "expense" : item}</button>)}</div>} />
+        <div className="grid gap-2 lg:grid-cols-4">
           <SummaryCard label="Costs logged" value={String(costs.length)} detail={eur.format(costs.reduce((sum: number, item: CostEntry) => sum + item.amount, 0))} />
           <SummaryCard label="Trips logged" value={String(trips.length)} detail={`${km.format(trips.reduce((sum: number, item: Trip) => sum + item.kilometers, 0))} km`} />
           <SummaryCard label="Inspections" value={String(inspections.length)} detail={`${inspections.filter((item: Inspection) => daysUntil(item.dueDate) <= item.reminderDays).length} need attention`} />
           <SummaryCard label="Maintenance" value={String(maintenance.length)} detail={`${maintenance.filter((item: MaintenanceTask) => item.status !== "Completed" && item.status !== "Skipped").length} open tasks`} />
         </div>
       </Panel>
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
         <SummaryCard label="Fuel this month" value={eur.format(monthFuel)} detail="Fuel and electric charging" />
         <SummaryCard label="Service this month" value={eur.format(monthMaintenance)} detail="Maintenance, repairs, and tires" />
         <SummaryCard label="Expiring documents" value={String(expiringDocuments.length)} detail="Inside reminder windows" />
         <SummaryCard label="Vehicles needing attention" value={String(attentionVehicles.length)} detail="Repair, registration, or insurance risk" />
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_330px]">
         <Panel>
           <SectionTitle eyebrow="Monthly spending" title={`${analytics.month} cost mix`} />
-          {analytics.monthlyByType.length ? <div className="grid min-h-64 grid-cols-2 items-end gap-3 md:grid-cols-5 lg:grid-cols-10">{analytics.monthlyByType.map((row: any) => <div key={row.type} className="grid h-full content-end gap-2 text-center"><div className="rounded-t-lg bg-teal-700" style={{ height: `${Math.max((row.total / maxMonthly) * 180, 16)}px` }} /><strong className="text-sm">{eur.format(row.total)}</strong><span className="text-xs text-slate-500">{row.type}</span></div>)}</div> : <EmptyState title="No spend this month" detail="Add fuel, service, insurance, tolls, or other ledger entries." />}
+          {analytics.monthlyByType.length ? <div className="grid min-h-56 grid-cols-2 items-end gap-3 md:grid-cols-5 lg:grid-cols-10">{analytics.monthlyByType.map((row: any) => <div key={row.type} className="grid h-full content-end gap-2 text-center"><div className="rounded-t-md bg-teal-700" style={{ height: `${Math.max((row.total / maxMonthly) * 150, 14)}px` }} /><strong className="text-xs">{eur.format(row.total)}</strong><span className="text-[11px] text-slate-500">{row.type}</span></div>)}</div> : <EmptyState title="No spend this month" detail="Add fuel, service, insurance, tolls, or other ledger entries." />}
         </Panel>
         <Panel>
           <SectionTitle eyebrow="Fleet list" title="Vehicles" />
           <div className="grid gap-2">
-            {state.vehicles.filter((vehicle: Vehicle) => !vehicle.archived).map((vehicle: Vehicle) => <article key={vehicle.id} className={`rounded-xl border p-3 ${vehicle.id === activeVehicle.id ? "border-teal-300 bg-teal-50" : "border-slate-200 bg-white"}`}><strong>{vehicle.year} {vehicle.make} {vehicle.model}</strong><p className="text-sm text-slate-500">{vehicle.registration} · {km.format(vehicle.currentOdometer)} km</p></article>)}
+            {state.vehicles.filter((vehicle: Vehicle) => !vehicle.archived).map((vehicle: Vehicle) => <article key={vehicle.id} className={`rounded-lg border p-3 ${vehicle.id === activeVehicle.id ? "border-teal-300 bg-teal-50" : "border-slate-200 bg-white"}`}><strong className="text-sm">{vehicle.year} {vehicle.make} {vehicle.model}</strong><p className="text-sm text-slate-500">{vehicle.registration} · {km.format(vehicle.currentOdometer)} km</p></article>)}
           </div>
         </Panel>
       </div>
@@ -696,7 +700,7 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
 }
 
 function SummaryCard({ label, value, detail }: { label: string; value: string; detail: string }) {
-  return <article className="rounded-xl border border-slate-200 bg-slate-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p><strong className="mt-2 block text-2xl font-black">{value}</strong><span className="text-sm text-slate-500">{detail}</span></article>;
+  return <article className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">{label}</p><strong className="mt-1.5 block text-xl font-bold text-slate-950">{value}</strong><span className="text-sm leading-5 text-slate-500">{detail}</span></article>;
 }
 
 function LedgerView({ costs, query, setQuery, filter, setFilter, addCost, archive, remove }: any) {
@@ -766,11 +770,11 @@ function AnalyticsView({ state, activeVehicle, analytics }: any) {
 }
 
 function Table({ headers, children }: { headers: string[]; children: React.ReactNode }) {
-  return <div className="overflow-x-auto rounded-xl border border-slate-200"><table className="w-full min-w-[840px] border-collapse bg-white text-left text-sm"><thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500"><tr>{headers.map((header) => <th key={header} className="border-b border-slate-200 px-4 py-3 font-black">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100 [&_td]:px-4 [&_td]:py-3">{children}</tbody></table></div>;
+  return <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[900px] border-collapse bg-white text-left text-sm text-slate-700"><thead className="bg-slate-50 text-[11px] uppercase tracking-[0.08em] text-slate-500"><tr>{headers.map((header) => <th key={header} className="sticky top-0 border-b border-slate-200 px-3 py-2.5 font-bold">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100 tabular-nums [&_tr:hover]:bg-slate-50 [&_td]:px-3 [&_td]:py-2.5">{children}</tbody></table></div>;
 }
 
 function Actions({ onArchive, onDelete }: { onArchive: () => void; onDelete: () => void }) {
-  return <div className="flex flex-wrap gap-2"><button onClick={onArchive} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700">Archive</button><button onClick={onDelete} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">Delete</button></div>;
+  return <div className="flex flex-wrap gap-2"><button onClick={onArchive} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">Archive</button><button onClick={onDelete} className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700">Delete</button></div>;
 }
 
 function VehicleEditor({ vehicle, onClose, onSave }: { vehicle: Vehicle; onClose: () => void; onSave: (vehicle: Vehicle) => void }) {
