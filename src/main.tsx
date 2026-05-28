@@ -1,4 +1,4 @@
-import React, { FormEvent, useMemo, useState } from "react";
+import React, { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./customerDashboard.css";
 
@@ -173,6 +173,11 @@ type FleetState = {
 
 const storageKey = "professional-vehicle-ledger-v2";
 const themeKey = "vehicle-ledger-theme";
+const supabaseUrl = (import.meta.env.VITE_SUPABASE_URL || "").replace(/\/$/, "");
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
+const supabaseTable = import.meta.env.VITE_SUPABASE_TABLE || "vehicle_ledgers";
+const garageSyncId = import.meta.env.VITE_GARAGE_SYNC_ID || "default";
+const cloudConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 const views: View[] = ["Dashboard", "Vehicles", "Ledger", "Trips", "Fuel", "Maintenance", "Inspections", "Documents", "Reports", "Settings"];
 const costTypes: CostType[] = ["Fuel", "Maintenance", "Repairs", "Insurance", "Registration", "Technical inspections", "Road tax", "Tolls", "Parking", "Car wash", "Tires", "Fines", "Leasing", "Depreciation", "Accessories", "Emergency", "Other"];
 const fuelTypes: FuelType[] = ["Petrol", "Diesel", "Hybrid", "Electric"];
@@ -257,6 +262,41 @@ function loadTheme() {
   return localStorage.getItem(themeKey) === "dark" ? "dark" : "light";
 }
 
+function isFleetState(value: unknown): value is FleetState {
+  const state = value as FleetState;
+  return Boolean(state && Array.isArray(state.vehicles) && Array.isArray(state.costs) && Array.isArray(state.trips) && Array.isArray(state.documents) && typeof state.activeVehicleId === "string");
+}
+
+async function fetchCloudState(): Promise<FleetState | null> {
+  if (!cloudConfigured) return null;
+  const url = `${supabaseUrl}/rest/v1/${supabaseTable}?id=eq.${encodeURIComponent(garageSyncId)}&select=data&limit=1`;
+  const response = await fetch(url, {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+    },
+  });
+  if (!response.ok) throw new Error(`Cloud load failed (${response.status})`);
+  const rows = await response.json();
+  const data = rows?.[0]?.data;
+  return isFleetState(data) ? data : null;
+}
+
+async function saveCloudState(state: FleetState) {
+  if (!cloudConfigured) return;
+  const response = await fetch(`${supabaseUrl}/rest/v1/${supabaseTable}`, {
+    method: "POST",
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+      "Content-Type": "application/json",
+      Prefer: "resolution=merge-duplicates",
+    },
+    body: JSON.stringify({ id: garageSyncId, data: state, updated_at: new Date().toISOString() }),
+  });
+  if (!response.ok) throw new Error(`Cloud save failed (${response.status})`);
+}
+
 function daysUntil(date: string) {
   return Math.ceil((new Date(date).getTime() - new Date(today).getTime()) / 86400000);
 }
@@ -307,6 +347,64 @@ function download(filename: string, content: string, type = "text/csv") {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function csvEscape(value: unknown) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`;
+}
+
+function parseCsv(text: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (char === '"' && quoted && next === '"') {
+      cell += '"';
+      index += 1;
+    } else if (char === '"') {
+      quoted = !quoted;
+    } else if (char === "," && !quoted) {
+      row.push(cell.trim());
+      cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(cell.trim());
+      if (row.some(Boolean)) rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+  row.push(cell.trim());
+  if (row.some(Boolean)) rows.push(row);
+  return rows;
+}
+
+function costsToCsv(costs: CostEntry[], vehicles: Vehicle[]) {
+  const header = ["vehicle", "registration", "date", "type", "vendor", "amount", "vat", "payment_method", "invoice", "odometer", "driver", "status", "notes"];
+  const rows = costs.filter((item) => !item.archived).map((item) => {
+    const vehicle = vehicles.find((entry) => entry.id === item.vehicleId);
+    return [
+      vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : item.vehicleId,
+      vehicle?.registration || "",
+      item.date,
+      item.type,
+      item.vendor,
+      item.amount,
+      item.vat || 0,
+      item.paymentMethod || "",
+      item.invoiceNumber || "",
+      item.odometer,
+      item.driver || "",
+      item.status || "",
+      item.notes,
+    ].map(csvEscape).join(",");
+  });
+  return [header.join(","), ...rows].join("\n");
 }
 
 function navLabel(view: View) {
@@ -462,11 +560,76 @@ function App() {
   const [theme, setThemeState] = useState<"light" | "dark">(loadTheme);
   const [confirmAction, setConfirmAction] = useState<{ title: string; detail: string; action: () => void } | null>(null);
   const [commandQuery, setCommandQuery] = useState("");
+  const [cloudStatus, setCloudStatus] = useState(cloudConfigured ? "Cloud connecting..." : "Local backup");
+  const saveTimer = useRef<number | null>(null);
 
   const persist = (next: FleetState) => {
     setState(next);
     saveState(next);
+    scheduleCloudSave(next);
   };
+
+  const scheduleCloudSave = (next: FleetState) => {
+    if (!cloudConfigured) return;
+    setCloudStatus("Cloud saving...");
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      saveCloudState(next)
+        .then(() => setCloudStatus(`Synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`))
+        .catch(() => setCloudStatus("Cloud save failed"));
+    }, 350);
+  };
+
+  const pullFromCloud = () => {
+    if (!cloudConfigured) {
+      setCloudStatus("Cloud not configured");
+      return;
+    }
+    setCloudStatus("Cloud loading...");
+    fetchCloudState()
+      .then((cloudState) => {
+        if (!cloudState) {
+          setCloudStatus("No cloud data yet");
+          return;
+        }
+        setState(cloudState);
+        saveState(cloudState);
+        setCloudStatus(`Pulled ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+      })
+      .catch(() => setCloudStatus("Cloud load failed"));
+  };
+
+  const pushToCloud = () => {
+    if (!cloudConfigured) {
+      setCloudStatus("Cloud not configured");
+      return;
+    }
+    setCloudStatus("Cloud saving...");
+    saveCloudState(state)
+      .then(() => setCloudStatus(`Synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`))
+      .catch(() => setCloudStatus("Cloud save failed"));
+  };
+
+  useEffect(() => {
+    if (!cloudConfigured) return;
+    let cancelled = false;
+    fetchCloudState()
+      .then((cloudState) => {
+        if (cancelled) return;
+        if (cloudState) {
+          setState(cloudState);
+          saveState(cloudState);
+          setCloudStatus(`Synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+        } else {
+          saveCloudState(state).then(() => !cancelled && setCloudStatus("Cloud initialized")).catch(() => !cancelled && setCloudStatus("Cloud save failed"));
+        }
+      })
+      .catch(() => !cancelled && setCloudStatus("Cloud load failed"));
+    return () => {
+      cancelled = true;
+      if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    };
+  }, []);
 
   const setTheme = (next: "light" | "dark") => {
     setThemeState(next);
@@ -899,12 +1062,84 @@ function App() {
   }
 
   function exportCsv() {
-    const header = "vehicle,date,type,vendor,amount,odometer,notes\n";
-    const rows = state.costs.filter((item) => !item.archived).map((item) => {
-      const vehicle = state.vehicles.find((entry) => entry.id === item.vehicleId);
-      return [vehicle ? `${vehicle.year} ${vehicle.make} ${vehicle.model}` : item.vehicleId, item.date, item.type, item.vendor, item.amount, item.odometer, item.notes].map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",");
-    }).join("\n");
-    download("vehicle-ledger-costs.csv", header + rows);
+    download("vehicle-ledger-costs.csv", costsToCsv(state.costs, state.vehicles));
+  }
+
+  function exportReportCsv() {
+    const rows = [
+      ["record_type", "vehicle", "date", "category", "description", "amount", "kilometers", "status", "notes"].join(","),
+      ...state.costs.filter((item) => !item.archived).map((item) => {
+        const vehicle = state.vehicles.find((entry) => entry.id === item.vehicleId);
+        return ["Cost", vehicle?.registration || item.vehicleId, item.date, item.type, item.vendor, item.amount, "", item.status || "", item.notes].map(csvEscape).join(",");
+      }),
+      ...state.trips.filter((item) => !item.archived).map((item) => {
+        const vehicle = state.vehicles.find((entry) => entry.id === item.vehicleId);
+        return ["Trip", vehicle?.registration || item.vehicleId, item.date, item.purpose, `${item.start} to ${item.end}`, item.reimbursementAmount || item.kilometers * item.reimbursementRate, item.kilometers, item.approvalStatus || "", item.notes].map(csvEscape).join(",");
+      }),
+      ...state.maintenance.filter((item) => !item.archived).map((item) => {
+        const vehicle = state.vehicles.find((entry) => entry.id === item.vehicleId);
+        return ["Maintenance", vehicle?.registration || item.vehicleId, item.dueDate, item.item, item.vendor || "", (item.partsCost || 0) + (item.laborCost || 0), item.nextDueKm, item.status, item.notes].map(csvEscape).join(",");
+      }),
+      ...state.inspections.filter((item) => !item.archived).map((item) => {
+        const vehicle = state.vehicles.find((entry) => entry.id === item.vehicleId);
+        return ["Inspection", vehicle?.registration || item.vehicleId, item.dueDate, item.type, item.vendor || "", "", "", item.result || "Pending", item.followUp || ""].map(csvEscape).join(",");
+      }),
+      ...state.documents.filter((item) => !item.archived).map((item) => {
+        const vehicle = state.vehicles.find((entry) => entry.id === item.vehicleId);
+        return ["Document", vehicle?.registration || item.vehicleId, item.uploadDate || today, item.type, item.title, "", "", item.expiryDate ? `Expires ${item.expiryDate}` : "No expiry", item.notes || item.fileName].map(csvEscape).join(",");
+      }),
+    ];
+    download("vehicle-ledger-report.csv", rows.join("\n"));
+  }
+
+  async function restoreBackup(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (!isFleetState(data)) throw new Error("Invalid backup");
+      persist(data);
+      setCloudStatus(cloudConfigured ? "Backup restored, syncing..." : "Backup restored locally");
+    } catch {
+      setCloudStatus("Backup restore failed");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function importCostsCsv(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const rows = parseCsv(await file.text());
+      const [header = [], ...body] = rows;
+      const fields = header.map((item) => item.toLowerCase().replace(/\s+/g, "_"));
+      const vehicleIdFor = (row: Record<string, string>) => {
+        const vehicleText = `${row.vehicle || ""} ${row.registration || ""}`.toLowerCase();
+        return state.vehicles.find((vehicle) => vehicleText.includes(vehicle.registration.toLowerCase()) || vehicleText.includes(vehicle.model.toLowerCase()))?.id || activeVehicle.id;
+      };
+      const imported = body.map((row) => Object.fromEntries(fields.map((field, index) => [field, row[index] || ""]))).map((row) => ({
+        id: uid("cost"),
+        vehicleId: vehicleIdFor(row),
+        date: row.date || today,
+        type: (costTypes.includes(row.type as CostType) ? row.type : "Other") as CostType,
+        vendor: row.vendor || row.supplier || "Imported vendor",
+        amount: Number(String(row.amount || "0").replace(",", ".")),
+        vat: Number(String(row.vat || "0").replace(",", ".")),
+        paymentMethod: row.payment_method || row.payment || "",
+        invoiceNumber: row.invoice || row.invoice_number || "",
+        odometer: Number(String(row.odometer || "0").replace(",", ".")),
+        driver: row.driver || "",
+        notes: row.notes || row.description || "Imported from CSV",
+        status: (row.status || "Paid") as CostStatus,
+      })).filter((item) => item.amount || item.vendor !== "Imported vendor");
+      persist({ ...state, costs: [...imported, ...state.costs] });
+      setCloudStatus(`Imported ${imported.length} costs`);
+    } catch {
+      setCloudStatus("CSV import failed");
+    } finally {
+      event.target.value = "";
+    }
   }
 
   return (
@@ -957,7 +1192,7 @@ function App() {
             { label: "Fleet km this month", value: `${km.format(analytics.monthlyKm)} km`, detail: pctChange(analytics.monthlyKm, analytics.priorKm) },
             { label: "Selected cost/km", value: eur2.format(analytics.vehicleCost / Math.max(analytics.vehicleKm, 1)), detail: `${eur.format(analytics.vehicleCost)} lifetime cost` },
             { label: "Open attention", value: String(attentionItems.length), detail: `${analytics.overdue.length} overdue maintenance` },
-            { label: "Active vehicles", value: String(state.vehicles.filter((vehicle) => !vehicle.archived && vehicle.status !== "Inactive").length), detail: `${state.vehicles.length} total profiles` },
+            { label: "Active vehicles", value: String(state.vehicles.filter((vehicle) => !vehicle.archived && vehicle.status !== "Inactive").length), detail: cloudStatus },
           ]}
         />
 
@@ -1013,7 +1248,7 @@ function App() {
             {view === "Fuel" && <FuelView fuel={state.fuel.filter((item) => !item.archived && item.vehicleId === activeVehicle.id)} activeVehicle={activeVehicle} archive={requestArchive} remove={requestDelete} setDrawer={openDrawer} editRecord={openEdit} />}
             {view === "Documents" && <DocumentsView docs={activeDocuments} archive={requestArchive} remove={requestDelete} setDrawer={openDrawer} editRecord={openEdit} />}
             {view === "Reports" && <AnalyticsView state={state} activeVehicle={activeVehicle} analytics={analytics} />}
-            {view === "Settings" && <SettingsView state={state} onReset={() => persist(seed)} />}
+            {view === "Settings" && <SettingsView state={state} cloudConfigured={cloudConfigured} cloudStatus={cloudStatus} onReset={() => persist(seed)} onRestore={restoreBackup} onImportCosts={importCostsCsv} onExportCosts={exportCsv} onExportReport={exportReportCsv} onCloudPull={pullFromCloud} onCloudPush={pushToCloud} />}
           </section>
         </section>
       </div>
@@ -1515,7 +1750,7 @@ function DocumentsView({ docs, archive, remove, setDrawer, editRecord }: any) {
   return <Panel><SectionTitle eyebrow="Document vault" title="Registration, insurance, invoices, inspections, warranty papers" action={<button onClick={() => setDrawer("document")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add document</button>} /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{docs.map((doc: DocumentRecord) => <article key={doc.id} className="rounded-xl border border-stone-200 bg-white p-4"><div className="mb-4 rounded-lg bg-[#2A1712] p-4 text-white"><span className="text-xs font-bold uppercase tracking-wide text-white/65">{doc.fileName.split(".").pop() || "doc"}</span><strong className="mt-8 block text-lg">{doc.type}</strong></div><strong>{doc.title}</strong><p className="mt-1 text-sm text-slate-500">{doc.fileName}</p><p className="text-sm text-slate-500">{doc.expiryDate ? `Expires ${doc.expiryDate}` : "No expiry"}</p><p className="text-sm text-slate-500">Uploaded {doc.uploadDate || "today"} · reminder {doc.reminderDays || 0} days</p><div className="mt-4"><Actions onEdit={() => editRecord("document", doc)} onArchive={() => archive("documents", doc.id, doc.title)} onDelete={() => remove("documents", doc.id, doc.title)} /></div></article>)}</div>{!docs.length ? <EmptyState title="No documents yet" detail="Add insurance, registration, invoices, or receipts to keep a complete vehicle file." /> : null}</Panel>;
 }
 
-function SettingsView({ state, onReset }: any) {
+function SettingsView({ state, cloudConfigured, cloudStatus, onReset, onRestore, onImportCosts, onExportCosts, onExportReport, onCloudPull, onCloudPush }: any) {
   function exportJson() {
     download("vehicle-ledger-backup.json", JSON.stringify(state, null, 2), "application/json");
   }
@@ -1524,7 +1759,7 @@ function SettingsView({ state, onReset }: any) {
     window.print();
   }
 
-  return <Panel><SectionTitle eyebrow="Settings" title="Data, export, and prototype controls" /><div className="grid gap-4 lg:grid-cols-3"><article className="rounded-xl border border-stone-200 bg-[#F7F1EA] p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Local persistence</p><strong className="mt-2 block text-2xl">{state.vehicles.length} vehicles</strong><p className="mt-2 text-sm text-slate-600">This prototype saves to this browser with localStorage. Use the JSON backup before clearing browser data.</p></article><article className="rounded-xl border border-stone-200 bg-[#F7F1EA] p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Exports</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={exportJson} className="rounded-lg bg-[#2A1712] px-3 py-2 text-sm font-bold text-white hover:bg-[#120B09]">Download backup</button><button onClick={printReport} className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">Print / PDF</button></div></article><article className="rounded-xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-red-700">Reset sample data</p><p className="mt-2 text-sm text-slate-700">Restore the realistic demo fleet and clear all edits stored in this browser.</p><button onClick={onReset} className="mt-3 rounded-lg bg-red-700 hover:bg-red-800 px-3 py-2 text-sm font-bold text-white">Reset demo</button></article></div></Panel>;
+  return <Panel><SectionTitle eyebrow="Settings" title="Data, sync, import, and exports" /><div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4"><article className="rounded-xl border border-stone-200 bg-[#F7F1EA] p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Cloud sync</p><strong className="mt-2 block text-2xl">{cloudConfigured ? "Supabase" : "Local only"}</strong><p className="mt-2 text-sm text-slate-600">{cloudStatus}</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={onCloudPull} className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">Pull cloud</button><button onClick={onCloudPush} className="rounded-lg bg-[#2A1712] px-3 py-2 text-sm font-bold text-white hover:bg-[#120B09]">Push now</button></div></article><article className="rounded-xl border border-stone-200 bg-[#F7F1EA] p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Backup and restore</p><strong className="mt-2 block text-2xl">{state.vehicles.length} vehicles</strong><p className="mt-2 text-sm text-slate-600">JSON backups restore the complete ledger, including vehicles, trips, service, documents, and settings.</p><div className="mt-3 flex flex-wrap gap-2"><button onClick={exportJson} className="rounded-lg bg-[#2A1712] px-3 py-2 text-sm font-bold text-white hover:bg-[#120B09]">Download backup</button><label className="cursor-pointer rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">Restore backup<input type="file" accept="application/json,.json" onChange={onRestore} className="hidden" /></label></div></article><article className="rounded-xl border border-stone-200 bg-[#F7F1EA] p-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Import and export</p><strong className="mt-2 block text-2xl">Reports</strong><p className="mt-2 text-sm text-slate-600">Import cost CSV files with date, type, vendor, amount, odometer, invoice, and notes columns.</p><div className="mt-3 flex flex-wrap gap-2"><label className="cursor-pointer rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">Import costs<input type="file" accept=".csv,text/csv" onChange={onImportCosts} className="hidden" /></label><button onClick={onExportCosts} className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">Costs CSV</button><button onClick={onExportReport} className="rounded-lg bg-[#2A1712] px-3 py-2 text-sm font-bold text-white hover:bg-[#120B09]">Full CSV</button><button onClick={printReport} className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm font-bold text-slate-700">Print / PDF</button></div></article><article className="rounded-xl border border-red-200 bg-red-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-red-700">Reset sample data</p><p className="mt-2 text-sm text-slate-700">Restore the realistic demo fleet and clear all edits stored in this browser.</p><button onClick={onReset} className="mt-3 rounded-lg bg-red-700 hover:bg-red-800 px-3 py-2 text-sm font-bold text-white">Reset demo</button></article></div></Panel>;
 }
 
 function AnalyticsView({ state, activeVehicle, analytics }: any) {
