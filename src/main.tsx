@@ -170,6 +170,7 @@ type FleetState = {
 };
 
 const storageKey = "professional-vehicle-ledger-v2";
+const themeKey = "vehicle-ledger-theme";
 const views: View[] = ["Dashboard", "Vehicles", "Ledger", "Trips", "Fuel", "Maintenance", "Inspections", "Documents", "Reports", "Settings"];
 const costTypes: CostType[] = ["Fuel", "Maintenance", "Repairs", "Insurance", "Registration", "Technical inspections", "Road tax", "Tolls", "Parking", "Car wash", "Tires", "Fines", "Leasing", "Depreciation", "Accessories", "Emergency", "Other"];
 const fuelTypes: FuelType[] = ["Petrol", "Diesel", "Hybrid", "Electric"];
@@ -248,6 +249,10 @@ function loadState(): FleetState {
 
 function saveState(state: FleetState) {
   localStorage.setItem(storageKey, JSON.stringify(state));
+}
+
+function loadTheme() {
+  return localStorage.getItem(themeKey) === "dark" ? "dark" : "light";
 }
 
 function daysUntil(date: string) {
@@ -360,11 +365,17 @@ function App() {
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [drawer, setDrawer] = useState<DrawerType>(null);
   const [quickOpen, setQuickOpen] = useState(false);
+  const [theme, setThemeState] = useState<"light" | "dark">(loadTheme);
   const [confirmAction, setConfirmAction] = useState<{ title: string; detail: string; action: () => void } | null>(null);
 
   const persist = (next: FleetState) => {
     setState(next);
     saveState(next);
+  };
+
+  const setTheme = (next: "light" | "dark") => {
+    setThemeState(next);
+    localStorage.setItem(themeKey, next);
   };
 
   const activeVehicle = state.vehicles.find((vehicle) => vehicle.id === state.activeVehicleId) || state.vehicles[0];
@@ -640,7 +651,7 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F3EEE8] pb-24 text-slate-900 lg:pb-6">
+    <main className={`${theme === "dark" ? "dark-mode" : ""} min-h-screen bg-[#F3EEE8] pb-24 text-slate-900 lg:pb-6`}>
       <div className="mx-auto grid w-full max-w-[1400px] gap-3 px-3 py-3 lg:px-5">
         <header className="sticky top-0 z-20 rounded-xl border border-[#3A2922] bg-[#17100D]/95 px-3 py-3 shadow-[0_18px_45px_rgba(42,23,18,0.22)] backdrop-blur">
           <div className="grid gap-3 lg:grid-cols-[250px_minmax(260px,1fr)_auto] lg:items-center">
@@ -651,7 +662,10 @@ function App() {
             <SelectInput value={activeVehicle.id} onChange={(event) => persist({ ...state, activeVehicleId: event.target.value })}>
               {state.vehicles.filter((vehicle) => !vehicle.archived).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.year} {vehicle.make} {vehicle.model} · {vehicle.registration}</option>)}
             </SelectInput>
-            <button onClick={exportCsv} className="rounded-md bg-[#B87333] px-3 py-2 text-sm font-semibold text-white hover:bg-[#8F5526]">Export CSV</button>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-stone-100 hover:bg-white/10">{theme === "dark" ? "Light mode" : "Dark mode"}</button>
+              <button onClick={exportCsv} className="rounded-md bg-[#B87333] px-3 py-2 text-sm font-semibold text-white hover:bg-[#8F5526]">Export CSV</button>
+            </div>
           </div>
           <div className="mt-3">
             <nav className="flex gap-1 overflow-x-auto rounded-lg border border-white/10 bg-white/5 p-1">
@@ -793,6 +807,42 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
   const documentPenalty = documentScore === "Complete" ? 0 : 12;
   const costPenalty = costHealth > 2 ? 18 : costHealth > 1 ? 9 : 0;
   const readinessScore = Math.max(42, 100 - openServicePenalty - compliancePenalty - documentPenalty - costPenalty);
+  const selectedCostPerKm = analytics.vehicleCost / Math.max(analytics.vehicleKm, 1);
+  const fleetCostPerKm = analytics.fleetCost / Math.max(analytics.fleetKm, 1);
+  const fleetDelta = fleetCostPerKm ? ((selectedCostPerKm - fleetCostPerKm) / fleetCostPerKm) * 100 : 0;
+  const topCategory = [...analytics.monthlyByType].sort((a: any, b: any) => b.total - a.total)[0];
+  const intelligence = [
+    {
+      label: "Cost per km",
+      value: eur2.format(selectedCostPerKm),
+      detail: fleetCostPerKm ? `${Math.abs(fleetDelta).toFixed(0)}% ${fleetDelta >= 0 ? "above" : "below"} fleet average` : "Fleet average unavailable",
+      tone: fleetDelta > 15 ? "warn" : "good",
+    },
+    {
+      label: "Monthly spend",
+      value: eur.format(analytics.monthlyCost),
+      detail: pctChange(analytics.monthlyCost, analytics.priorMonthlyCost),
+      tone: analytics.priorMonthlyCost && analytics.monthlyCost > analytics.priorMonthlyCost * 1.2 ? "warn" : "good",
+    },
+    {
+      label: "Fuel/energy",
+      value: eur.format(analytics.fuelSpend),
+      detail: pctChange(analytics.fuelSpend, analytics.priorFuelSpend),
+      tone: analytics.priorFuelSpend && analytics.fuelSpend > analytics.priorFuelSpend * 1.2 ? "warn" : "good",
+    },
+    {
+      label: "Maintenance risk",
+      value: analytics.overdue.length ? `${analytics.overdue.length} overdue` : "Normal",
+      detail: analytics.maintenanceSpend ? `${eur.format(analytics.maintenanceSpend)} service spend this month` : "No service spend this month",
+      tone: analytics.overdue.length ? "bad" : "good",
+    },
+    {
+      label: "Largest cost area",
+      value: topCategory ? topCategory.type : "None",
+      detail: topCategory ? `${eur.format(topCategory.total)} in ${analytics.month}` : "No costs booked this month",
+      tone: topCategory && topCategory.total > analytics.monthlyCost * 0.5 ? "warn" : "good",
+    },
+  ];
   const healthItems = [
     { label: "Cost health", value: costHealth < 1 ? "Efficient" : "Review", detail: eur2.format(costHealth), tone: costHealth < 1 ? "good" : "warn" },
     { label: "Maintenance", value: nextMaintenance?.status || "Current", detail: nextMaintenance ? nextMaintenance.item : "No open service", tone: nextMaintenance?.status === "Overdue" ? "bad" : nextMaintenance?.status === "Due soon" ? "warn" : "good" },
@@ -805,6 +855,7 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
       <VehicleHomeCard activeVehicle={activeVehicle} analytics={analytics} nextMaintenance={nextMaintenance} readinessScore={readinessScore} setView={setView} setDrawer={setDrawer} />
 
       <HealthPanel items={healthItems} />
+      <CostIntelligence insights={intelligence} />
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Panel>
@@ -900,6 +951,28 @@ function HealthPanel({ items }: { items: Array<{ label: string; value: string; d
           <article key={item.label} className="rounded-lg border border-stone-200 bg-[#F7F1EA] p-3">
             <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#B87333]">{item.label}</p>
             <strong className="mt-2 block text-lg font-semibold text-[#2A1712]">{item.value}</strong>
+            <span className={`mt-2 inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${toneClass[item.tone] || toneClass.good}`}>{item.detail}</span>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function CostIntelligence({ insights }: { insights: Array<{ label: string; value: string; detail: string; tone: string }> }) {
+  const toneClass: Record<string, string> = {
+    good: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    warn: "border-amber-200 bg-amber-50 text-amber-700",
+    bad: "border-red-200 bg-red-50 text-red-700",
+  };
+  return (
+    <Panel>
+      <SectionTitle eyebrow="Cost intelligence" title="Operating cost signals" />
+      <div className="grid gap-2 md:grid-cols-5">
+        {insights.map((item) => (
+          <article key={item.label} className="rounded-lg border border-stone-200 bg-[#F7F1EA] p-3">
+            <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#B87333]">{item.label}</p>
+            <strong className="mt-2 block text-xl font-semibold text-[#2A1712]">{item.value}</strong>
             <span className={`mt-2 inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${toneClass[item.tone] || toneClass.good}`}>{item.detail}</span>
           </article>
         ))}

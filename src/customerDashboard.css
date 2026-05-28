@@ -30,3 +30,102 @@ textarea {
 button {
   cursor: pointer;
 }
+
+.dark-mode {
+  background: #0f0a08 !important;
+  color: #f5f5f4 !important;
+}
+
+.dark-mode section,
+.dark-mode article,
+.dark-mode table,
+.dark-mode aside > div,
+.dark-mode details,
+.dark-mode .rounded-xl,
+.dark-mode .rounded-lg {
+  border-color: #3a2922 !important;
+}
+
+.dark-mode section:not([class*="bg-[#17100D]"]),
+.dark-mode article:not([class*="bg-red"]):not([class*="bg-amber"]):not([class*="bg-emerald"]),
+.dark-mode table,
+.dark-mode aside {
+  background-color: #17100d !important;
+  color: #f5f5f4 !important;
+}
+
+.dark-mode thead,
+.dark-mode form,
+.dark-mode summary,
+.dark-mode .bg-\[\#F7F1EA\] {
+  background-color: #241a16 !important;
+}
+
+.dark-mode .bg-white {
+  background-color: #17100d !important;
+  color: #f5f5f4 !important;
+}
+
+.dark-mode .bg-red-50 {
+  background-color: #3b1111 !important;
+  border-color: #7f1d1d !important;
+  color: #fecaca !important;
+}
+
+.dark-mode .bg-amber-50 {
+  background-color: #3a2410 !important;
+  border-color: #92400e !important;
+  color: #fde68a !important;
+}
+
+.dark-mode .bg-emerald-50 {
+  background-color: #062f23 !important;
+  border-color: #065f46 !important;
+  color: #a7f3d0 !important;
+}
+
+.dark-mode .text-red-700 {
+  color: #fecaca !important;
+}
+
+.dark-mode .text-amber-700 {
+  color: #fde68a !important;
+}
+
+.dark-mode .text-emerald-700 {
+  color: #a7f3d0 !important;
+}
+
+.dark-mode h1,
+.dark-mode h2,
+.dark-mode strong,
+.dark-mode dd,
+.dark-mode td,
+.dark-mode summary,
+.dark-mode label {
+  color: #f5f5f4 !important;
+}
+
+.dark-mode p,
+.dark-mode dt,
+.dark-mode th,
+.dark-mode span:not([class*="bg-"]):not([class*="text-red"]):not([class*="text-amber"]):not([class*="text-emerald"]):not([class*="text-[#"]) {
+  color: #c7b9af !important;
+}
+
+.dark-mode input,
+.dark-mode select,
+.dark-mode textarea {
+  background-color: #241a16 !important;
+  border-color: #4a332a !important;
+  color: #f5f5f4 !important;
+}
+
+.dark-mode input::placeholder {
+  color: #8f8178 !important;
+}
+
+.dark-mode tbody tr:hover,
+.dark-mode button:hover {
+  background-color: rgba(184, 115, 51, 0.12) !important;
+}
