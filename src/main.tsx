@@ -271,6 +271,10 @@ function pctChange(current: number, previous: number) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(0)}% vs prior month`;
 }
 
+function shortDate(date: string) {
+  return date ? date.slice(5).replace("-", ".") : "";
+}
+
 function dueWithin(date: string | undefined, days = 30) {
   if (!date) return false;
   const due = daysUntil(date);
@@ -355,6 +359,7 @@ function App() {
   const [costFilter, setCostFilter] = useState<CostType | "All">("All");
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [drawer, setDrawer] = useState<DrawerType>(null);
+  const [quickOpen, setQuickOpen] = useState(false);
   const [confirmAction, setConfirmAction] = useState<{ title: string; detail: string; action: () => void } | null>(null);
 
   const persist = (next: FleetState) => {
@@ -635,7 +640,7 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F3EEE8] text-slate-900">
+    <main className="min-h-screen bg-[#F3EEE8] pb-24 text-slate-900 lg:pb-6">
       <div className="mx-auto grid w-full max-w-[1400px] gap-3 px-3 py-3 lg:px-5">
         <header className="sticky top-0 z-20 rounded-xl border border-[#3A2922] bg-[#17100D]/95 px-3 py-3 shadow-[0_18px_45px_rgba(42,23,18,0.22)] backdrop-blur">
           <div className="grid gap-3 lg:grid-cols-[250px_minmax(260px,1fr)_auto] lg:items-center">
@@ -727,6 +732,8 @@ function App() {
         </section>
       </div>
 
+      <QuickAddDock open={quickOpen} setOpen={setQuickOpen} setDrawer={setDrawer} />
+      <MobileBottomNav view={view} setView={setView} setDrawer={setDrawer} />
       {editingVehicle ? <VehicleEditor vehicle={editingVehicle} onClose={() => setEditingVehicle(null)} onSave={updateVehicle} /> : null}
       {drawer ? <RecordDrawer type={drawer} activeVehicle={activeVehicle} onClose={() => setDrawer(null)} forms={{ vehicle: addVehicle, cost: addCost, fuel: addFuel, trip: addTrip, inspection: addInspection, maintenance: addMaintenance, document: addDocument }} /> : null}
       {confirmAction ? <ConfirmDialog {...confirmAction} onClose={() => setConfirmAction(null)} /> : null}
@@ -781,6 +788,11 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
   ];
   const documentScore = activeVehicle.insuranceExpiry && activeVehicle.registrationExpiry && activeVehicle.inspectionExpiry ? "Complete" : "Review";
   const costHealth = analytics.vehicleKm ? analytics.vehicleCost / analytics.vehicleKm : 0;
+  const openServicePenalty = nextMaintenance?.status === "Overdue" ? 22 : nextMaintenance?.status === "Due soon" ? 10 : 0;
+  const compliancePenalty = inspections.some((item: Inspection) => daysUntil(item.dueDate) < 0) ? 24 : inspections.some((item: Inspection) => daysUntil(item.dueDate) <= 30) ? 10 : 0;
+  const documentPenalty = documentScore === "Complete" ? 0 : 12;
+  const costPenalty = costHealth > 2 ? 18 : costHealth > 1 ? 9 : 0;
+  const readinessScore = Math.max(42, 100 - openServicePenalty - compliancePenalty - documentPenalty - costPenalty);
   const healthItems = [
     { label: "Cost health", value: costHealth < 1 ? "Efficient" : "Review", detail: eur2.format(costHealth), tone: costHealth < 1 ? "good" : "warn" },
     { label: "Maintenance", value: nextMaintenance?.status || "Current", detail: nextMaintenance ? nextMaintenance.item : "No open service", tone: nextMaintenance?.status === "Overdue" ? "bad" : nextMaintenance?.status === "Due soon" ? "warn" : "good" },
@@ -790,17 +802,7 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
   ];
   return (
     <>
-      <Panel>
-        <SectionTitle eyebrow="Selected vehicle" title={`${activeVehicle.year} ${activeVehicle.make} ${activeVehicle.model}`} action={<Badge>{activeVehicle.status || "Active"}</Badge>} />
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <Info label="Driver" value={activeVehicle.assignedDriver || "Unassigned"} />
-          <Info label="Odometer" value={`${km.format(activeVehicle.currentOdometer)} km`} />
-          <Info label="Cost/km" value={eur2.format(analytics.vehicleCost / Math.max(analytics.vehicleKm, 1))} />
-          <Info label="Next service" value={nextMaintenance ? `${nextMaintenance.item} · ${km.format(nextMaintenance.nextDueKm)} km` : "No open service"} />
-          <Info label="Insurance" value={activeVehicle.insuranceExpiry || "Missing"} />
-          <Info label="Inspection" value={activeVehicle.inspectionExpiry || "Missing"} />
-        </div>
-      </Panel>
+      <VehicleHomeCard activeVehicle={activeVehicle} analytics={analytics} nextMaintenance={nextMaintenance} readinessScore={readinessScore} setView={setView} setDrawer={setDrawer} />
 
       <HealthPanel items={healthItems} />
 
@@ -837,7 +839,46 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
           </div>
         </Panel>
       </div>
+
+      <VehicleTimeline state={state} activeVehicle={activeVehicle} costs={costs} trips={trips} inspections={inspections} maintenance={maintenance} setView={setView} />
     </>
+  );
+}
+
+function VehicleHomeCard({ activeVehicle, analytics, nextMaintenance, readinessScore, setView, setDrawer }: any) {
+  const scoreTone = readinessScore >= 80 ? "text-emerald-300" : readinessScore >= 62 ? "text-amber-300" : "text-red-300";
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#3A2922] bg-[#17100D] text-white shadow-[0_18px_45px_rgba(42,23,18,0.22)]">
+      <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-end">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone="bg-[#2D211C] text-[#D5A06F] ring-white/10">{activeVehicle.status || "Active"}</Badge>
+            <Badge tone="bg-[#2D211C] text-stone-200 ring-white/10">{activeVehicle.registration}</Badge>
+          </div>
+          <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.2em] text-[#C58B5C]">Selected vehicle</p>
+          <h2 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">{activeVehicle.year} {activeVehicle.make} {activeVehicle.model}</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-stone-300">{activeVehicle.notes || `${activeVehicle.ownershipStatus} vehicle assigned to ${activeVehicle.assignedDriver || "the fleet"}.`}</p>
+          <div className="mt-5 grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+            <span className="rounded-lg border border-white/10 bg-white/5 p-3"><strong className="block text-[#C58B5C]">Odometer</strong>{km.format(activeVehicle.currentOdometer)} km</span>
+            <span className="rounded-lg border border-white/10 bg-white/5 p-3"><strong className="block text-[#C58B5C]">Cost/km</strong>{eur2.format(analytics.vehicleCost / Math.max(analytics.vehicleKm, 1))}</span>
+            <span className="rounded-lg border border-white/10 bg-white/5 p-3"><strong className="block text-[#C58B5C]">Next service</strong>{nextMaintenance ? `${nextMaintenance.item} · ${km.format(nextMaintenance.nextDueKm)} km` : "Current"}</span>
+            <span className="rounded-lg border border-white/10 bg-white/5 p-3"><strong className="block text-[#C58B5C]">Insurance</strong>{activeVehicle.insuranceExpiry || "Missing"}</span>
+          </div>
+        </div>
+        <div className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
+          <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-[#C58B5C]">Readiness score</p>
+          <div className="mt-4 flex items-end gap-2">
+            <strong className={`text-6xl font-semibold leading-none ${scoreTone}`}>{readinessScore}</strong>
+            <span className="pb-2 text-sm font-semibold text-stone-300">/100</span>
+          </div>
+          <p className="mt-3 text-sm leading-5 text-stone-300">{readinessScore >= 80 ? "Ready for daily use." : readinessScore >= 62 ? "Good, with items to watch." : "Needs operator attention."}</p>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <button onClick={() => setDrawer("fuel")} className="rounded-md bg-[#B87333] px-3 py-2 text-sm font-semibold text-white hover:bg-[#8F5526]">Fuel/Charge</button>
+            <button onClick={() => setView("Maintenance")} className="rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-stone-100 hover:bg-white/10">Service</button>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -862,6 +903,35 @@ function HealthPanel({ items }: { items: Array<{ label: string; value: string; d
             <span className={`mt-2 inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${toneClass[item.tone] || toneClass.good}`}>{item.detail}</span>
           </article>
         ))}
+      </div>
+    </Panel>
+  );
+}
+
+function VehicleTimeline({ state, activeVehicle, costs, trips, inspections, maintenance, setView }: any) {
+  const docs = state.documents.filter((doc: DocumentRecord) => !doc.archived && doc.vehicleId === activeVehicle.id);
+  const entries = [
+    ...costs.slice(0, 5).map((item: CostEntry) => ({ date: item.date, type: item.type, title: item.vendor, detail: `${eur2.format(item.amount)} · ${item.notes || "Cost entry"}`, view: "Ledger" as View })),
+    ...trips.slice(0, 4).map((item: Trip) => ({ date: item.date, type: "Trip", title: `${item.start} to ${item.end}`, detail: `${km.format(item.kilometers)} km · ${item.purpose}`, view: "Trips" as View })),
+    ...inspections.slice(0, 4).map((item: Inspection) => ({ date: item.completedDate || item.dueDate, type: "Compliance", title: item.type, detail: `${item.result || "Pending"} · due ${item.dueDate}`, view: "Inspections" as View })),
+    ...maintenance.slice(0, 4).map((item: MaintenanceTask) => ({ date: item.dueDate, type: "Service", title: item.item, detail: `${item.status} · ${km.format(item.nextDueKm)} km`, view: "Maintenance" as View })),
+    ...docs.slice(0, 4).map((item: DocumentRecord) => ({ date: item.uploadDate || today, type: "Document", title: item.title, detail: item.expiryDate ? `Expires ${item.expiryDate}` : item.fileName, view: "Documents" as View })),
+  ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8);
+
+  return (
+    <Panel>
+      <SectionTitle eyebrow="Vehicle timeline" title="Recent ownership story" action={<button onClick={() => setView("Ledger")} className="rounded-md border border-[#B87333] bg-white px-3 py-1.5 text-xs font-semibold text-[#2A1712] hover:bg-[#F7F1EA]">Open ledger</button>} />
+      <div className="grid gap-2">
+        {entries.length ? entries.map((entry) => (
+          <button key={`${entry.type}-${entry.title}-${entry.date}`} onClick={() => setView(entry.view)} className="grid grid-cols-[52px_1fr] gap-3 rounded-lg border border-stone-200 bg-white p-3 text-left hover:border-[#B87333] hover:bg-[#F7F1EA]">
+            <span className="rounded-md bg-[#2A1712] px-2 py-1 text-center text-[11px] font-bold text-[#D5A06F]">{shortDate(entry.date)}</span>
+            <span>
+              <span className="block text-[11px] font-bold uppercase tracking-[0.12em] text-[#B87333]">{entry.type}</span>
+              <strong className="block text-sm text-[#2A1712]">{entry.title}</strong>
+              <span className="block text-sm text-slate-500">{entry.detail}</span>
+            </span>
+          </button>
+        )) : <EmptyState title="No timeline yet" detail="Add trips, costs, service, inspections, or documents to build the vehicle history." />}
       </div>
     </Panel>
   );
@@ -967,6 +1037,39 @@ function Actions({ onEdit, onArchive, onDelete }: { onEdit?: () => void; onArchi
 
 function PrimaryButton({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) {
   return <button onClick={onClick} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">{children}</button>;
+}
+
+function QuickAddDock({ open, setOpen, setDrawer }: { open: boolean; setOpen: (value: boolean) => void; setDrawer: (type: DrawerType) => void }) {
+  const actions: Array<[Exclude<DrawerType, null>, string]> = [["cost", "Expense"], ["fuel", "Fuel/Charge"], ["trip", "Trip"], ["maintenance", "Service"], ["inspection", "Inspection"], ["document", "Document"]];
+  return (
+    <div className="fixed bottom-24 right-4 z-40 grid justify-items-end gap-2 lg:bottom-6">
+      {open ? (
+        <div className="grid gap-1 rounded-xl border border-[#3A2922] bg-[#17100D] p-2 shadow-[0_18px_45px_rgba(42,23,18,0.26)]">
+          {actions.map(([type, label]) => (
+            <button key={type} onClick={() => { setDrawer(type); setOpen(false); }} className="rounded-md px-3 py-2 text-left text-sm font-semibold text-stone-100 hover:bg-white/10">
+              {label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+      <button onClick={() => setOpen(!open)} className="grid h-14 w-14 place-items-center rounded-full bg-[#B87333] text-3xl font-light leading-none text-white shadow-[0_14px_30px_rgba(184,115,51,0.35)] hover:bg-[#8F5526]" aria-label="Add record">
+        {open ? "×" : "+"}
+      </button>
+    </div>
+  );
+}
+
+function MobileBottomNav({ view, setView, setDrawer }: { view: View; setView: (view: View) => void; setDrawer: (type: DrawerType) => void }) {
+  const items: Array<[View | "Add", string]> = [["Dashboard", "Home"], ["Ledger", "Ledger"], ["Add", "Add"], ["Maintenance", "Service"], ["Documents", "Docs"]];
+  return (
+    <nav className="fixed inset-x-3 bottom-3 z-30 grid grid-cols-5 rounded-2xl border border-[#3A2922] bg-[#17100D]/95 p-1 shadow-[0_18px_45px_rgba(42,23,18,0.28)] backdrop-blur lg:hidden">
+      {items.map(([target, label]) => (
+        <button key={target} onClick={() => target === "Add" ? setDrawer("cost") : setView(target)} className={`rounded-xl px-2 py-2 text-xs font-semibold ${view === target ? "bg-[#B87333] text-white" : target === "Add" ? "text-[#D5A06F]" : "text-stone-200"}`}>
+          {target === "Add" ? "+" : label}
+        </button>
+      ))}
+    </nav>
+  );
 }
 
 function RecordDrawer({ type, activeVehicle, onClose, forms }: { type: Exclude<DrawerType, null>; activeVehicle: Vehicle; onClose: () => void; forms: Record<Exclude<DrawerType, null>, (event: FormEvent<HTMLFormElement>) => void> }) {
