@@ -11,8 +11,10 @@ type CostStatus = "Draft" | "Approved" | "Paid" | "Reimbursed" | "Rejected";
 type TripPurpose = "Business" | "Personal" | "Commute" | "Delivery" | "Service" | "Other";
 type Result = "Passed" | "Failed" | "Conditional" | "Pending";
 type TaskStatus = "Upcoming" | "Due soon" | "Overdue" | "Completed" | "Skipped";
-type View = "Dashboard" | "Vehicles" | "Ledger" | "Trips" | "Fuel" | "Maintenance" | "Inspections" | "Documents" | "Reports" | "Settings";
+type View = "Dashboard" | "Vehicles" | "VehicleDetail" | "Ledger" | "Trips" | "Fuel" | "Maintenance" | "Inspections" | "Documents" | "Reports" | "Settings";
 type DrawerType = "vehicle" | "cost" | "fuel" | "trip" | "inspection" | "maintenance" | "document" | null;
+type EditableRecordType = Exclude<DrawerType, "vehicle" | null>;
+type EditingRecord = { type: EditableRecordType; item: CostEntry | FuelEntry | Trip | Inspection | MaintenanceTask | DocumentRecord };
 
 type Vehicle = {
   id: string;
@@ -311,6 +313,7 @@ function navLabel(view: View) {
   const labels: Record<View, string> = {
     Dashboard: "Dashboard",
     Vehicles: "Vehicles",
+    VehicleDetail: "Vehicle file",
     Ledger: "Ledger",
     Trips: "Trips",
     Fuel: "Fuel & Charging",
@@ -333,6 +336,85 @@ function badgeTone(value: string) {
 
 function Badge({ children, tone }: { children: React.ReactNode; tone?: string }) {
   return <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-semibold ring-1 ${tone || badgeTone(String(children))}`}>{children}</span>;
+}
+
+type CommandResult = {
+  id: string;
+  label: string;
+  detail: string;
+  group: string;
+  view: View;
+  vehicleId?: string;
+};
+
+function buildCommandResults(state: FleetState, query: string): CommandResult[] {
+  const needle = query.trim().toLowerCase();
+  if (needle.length < 2) return [];
+  const vehicleName = (id: string) => {
+    const vehicle = state.vehicles.find((item) => item.id === id);
+    return vehicle ? `${vehicle.registration} · ${vehicle.make} ${vehicle.model}` : "Unknown vehicle";
+  };
+  const results: CommandResult[] = [
+    ...state.vehicles.map((vehicle) => ({
+      id: `vehicle-${vehicle.id}`,
+      group: "Vehicles",
+      label: `${vehicle.year} ${vehicle.make} ${vehicle.model}`,
+      detail: `${vehicle.registration} · ${vehicle.vin} · ${vehicle.assignedDriver || "Unassigned"}`,
+      view: "VehicleDetail" as View,
+      vehicleId: vehicle.id,
+    })),
+    ...state.costs.filter((item) => !item.archived).map((item) => ({
+      id: `cost-${item.id}`,
+      group: "Ledger",
+      label: `${item.vendor} · ${eur2.format(item.amount)}`,
+      detail: `${item.type} · ${item.invoiceNumber || "No invoice"} · ${vehicleName(item.vehicleId)}`,
+      view: "Ledger" as View,
+      vehicleId: item.vehicleId,
+    })),
+    ...state.fuel.filter((item) => !item.archived).map((item) => ({
+      id: `fuel-${item.id}`,
+      group: "Fuel & Charging",
+      label: `${item.station} · ${eur2.format(item.totalCost)}`,
+      detail: `${item.quantity.toFixed(1)} ${item.fuelType === "Electric" ? "kWh" : "L"} · ${vehicleName(item.vehicleId)}`,
+      view: "Fuel" as View,
+      vehicleId: item.vehicleId,
+    })),
+    ...state.trips.filter((item) => !item.archived).map((item) => ({
+      id: `trip-${item.id}`,
+      group: "Trips",
+      label: `${item.start} to ${item.end}`,
+      detail: `${km.format(item.kilometers)} km · ${item.driver} · ${item.clientProject || item.purpose}`,
+      view: "Trips" as View,
+      vehicleId: item.vehicleId,
+    })),
+    ...state.documents.filter((item) => !item.archived).map((item) => ({
+      id: `doc-${item.id}`,
+      group: "Documents",
+      label: item.title,
+      detail: `${item.type} · ${item.fileName} · ${vehicleName(item.vehicleId)}`,
+      view: "Documents" as View,
+      vehicleId: item.vehicleId,
+    })),
+    ...state.maintenance.filter((item) => !item.archived).map((item) => ({
+      id: `maintenance-${item.id}`,
+      group: "Service",
+      label: item.item,
+      detail: `${item.status} · due ${item.dueDate} · ${vehicleName(item.vehicleId)}`,
+      view: "Maintenance" as View,
+      vehicleId: item.vehicleId,
+    })),
+    ...state.inspections.filter((item) => !item.archived).map((item) => ({
+      id: `inspection-${item.id}`,
+      group: "Compliance",
+      label: item.type,
+      detail: `${item.result || "Pending"} · due ${item.dueDate} · ${vehicleName(item.vehicleId)}`,
+      view: "Inspections" as View,
+      vehicleId: item.vehicleId,
+    })),
+  ];
+  return results
+    .filter((item) => `${item.group} ${item.label} ${item.detail}`.toLowerCase().includes(needle))
+    .slice(0, 8);
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -375,9 +457,11 @@ function App() {
   const [costFilter, setCostFilter] = useState<CostType | "All">("All");
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
   const [drawer, setDrawer] = useState<DrawerType>(null);
+  const [editingRecord, setEditingRecord] = useState<EditingRecord | null>(null);
   const [quickOpen, setQuickOpen] = useState(false);
   const [theme, setThemeState] = useState<"light" | "dark">(loadTheme);
   const [confirmAction, setConfirmAction] = useState<{ title: string; detail: string; action: () => void } | null>(null);
+  const [commandQuery, setCommandQuery] = useState("");
 
   const persist = (next: FleetState) => {
     setState(next);
@@ -387,6 +471,23 @@ function App() {
   const setTheme = (next: "light" | "dark") => {
     setThemeState(next);
     localStorage.setItem(themeKey, next);
+  };
+
+  const openDrawer = (type: DrawerType) => {
+    setEditingRecord(null);
+    setCommandQuery("");
+    setDrawer(type);
+  };
+
+  const openEdit = (type: EditableRecordType, item: EditingRecord["item"]) => {
+    setEditingRecord({ type, item });
+    setCommandQuery("");
+    setDrawer(type);
+  };
+
+  const closeDrawer = () => {
+    setDrawer(null);
+    setEditingRecord(null);
   };
 
   const activeVehicle = state.vehicles.find((vehicle) => vehicle.id === state.activeVehicleId) || state.vehicles[0];
@@ -445,6 +546,14 @@ function App() {
     return (costFilter === "All" || item.type === costFilter) && (!query || haystack.includes(query.toLowerCase()));
   });
 
+  const commandResults = useMemo(() => buildCommandResults(state, commandQuery), [state, commandQuery]);
+
+  const runCommand = (result: CommandResult) => {
+    persist({ ...state, activeVehicleId: result.vehicleId || state.activeVehicleId });
+    setView(result.view);
+    setCommandQuery("");
+  };
+
   const archive = (collection: keyof FleetState, id: string) => {
     const list = state[collection];
     if (!Array.isArray(list)) return;
@@ -482,7 +591,7 @@ function App() {
     };
     persist({ ...state, activeVehicleId: vehicle.id, vehicles: [...state.vehicles, vehicle] });
     event.currentTarget.reset();
-    setDrawer(null);
+    closeDrawer();
   }
 
   function updateVehicle(vehicle: Vehicle) {
@@ -511,7 +620,31 @@ function App() {
     };
     persist({ ...state, costs: [cost, ...state.costs] });
     event.currentTarget.reset();
-    setDrawer(null);
+    closeDrawer();
+  }
+
+  function updateCost(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingRecord || editingRecord.type !== "cost") return;
+    const original = editingRecord.item as CostEntry;
+    const form = new FormData(event.currentTarget);
+    const next: CostEntry = {
+      ...original,
+      date: String(form.get("date") || today),
+      type: String(form.get("type") || "Other") as CostType,
+      vendor: String(form.get("vendor") || "Unknown vendor"),
+      amount: Number(form.get("amount") || 0),
+      vat: Number(form.get("vat") || 0),
+      paymentMethod: String(form.get("paymentMethod") || ""),
+      invoiceNumber: String(form.get("invoiceNumber") || ""),
+      odometer: Number(form.get("odometer") || activeVehicle.currentOdometer),
+      driver: String(form.get("driver") || activeVehicle.assignedDriver || ""),
+      notes: String(form.get("notes") || ""),
+      attachment: String(form.get("attachment") || ""),
+      status: String(form.get("status") || "Draft") as CostStatus,
+    };
+    persist({ ...state, costs: state.costs.map((item) => item.id === original.id ? next : item) });
+    closeDrawer();
   }
 
   function addFuel(event: FormEvent<HTMLFormElement>) {
@@ -562,7 +695,41 @@ function App() {
       vehicles: state.vehicles.map((vehicle) => vehicle.id === activeVehicle.id ? { ...vehicle, currentOdometer: Math.max(vehicle.currentOdometer, odometer) } : vehicle),
     });
     event.currentTarget.reset();
-    setDrawer(null);
+    closeDrawer();
+  }
+
+  function updateFuel(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingRecord || editingRecord.type !== "fuel") return;
+    const original = editingRecord.item as FuelEntry;
+    const form = new FormData(event.currentTarget);
+    const odometer = Number(form.get("odometer") || activeVehicle.currentOdometer);
+    const quantity = Number(form.get("quantity") || 0);
+    const pricePerUnit = Number(form.get("pricePerUnit") || 0);
+    const totalCost = Number(form.get("totalCost") || quantity * pricePerUnit);
+    const distanceSinceLast = Number(form.get("distanceSinceLast") || original.distanceSinceLast || 0);
+    const next: FuelEntry = {
+      ...original,
+      date: String(form.get("date") || today),
+      odometer,
+      quantity,
+      fuelType: String(form.get("fuelType") || activeVehicle.fuelType) as FuelType,
+      pricePerUnit,
+      totalCost,
+      station: String(form.get("station") || "Unknown station"),
+      fullTank: form.get("fullTank") === "on",
+      distanceSinceLast,
+      economy: distanceSinceLast ? (quantity / distanceSinceLast) * 100 : 0,
+      costPerKm: distanceSinceLast ? totalCost / distanceSinceLast : 0,
+      notes: String(form.get("notes") || ""),
+      receipt: String(form.get("receipt") || ""),
+    };
+    persist({
+      ...state,
+      fuel: state.fuel.map((item) => item.id === original.id ? next : item),
+      vehicles: state.vehicles.map((vehicle) => vehicle.id === next.vehicleId ? { ...vehicle, currentOdometer: Math.max(vehicle.currentOdometer, odometer) } : vehicle),
+    });
+    closeDrawer();
   }
 
   function addTrip(event: FormEvent<HTMLFormElement>) {
@@ -582,7 +749,31 @@ function App() {
     };
     persist({ ...state, trips: [trip, ...state.trips] });
     event.currentTarget.reset();
-    setDrawer(null);
+    closeDrawer();
+  }
+
+  function updateTrip(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingRecord || editingRecord.type !== "trip") return;
+    const original = editingRecord.item as Trip;
+    const form = new FormData(event.currentTarget);
+    const kilometers = Number(form.get("kilometers") || 0);
+    const reimbursementRate = Number(form.get("reimbursementRate") || 0);
+    const next: Trip = {
+      ...original,
+      date: String(form.get("date") || today),
+      start: String(form.get("start") || ""),
+      end: String(form.get("end") || ""),
+      purpose: String(form.get("purpose") || "Business") as TripPurpose,
+      kilometers,
+      driver: String(form.get("driver") || ""),
+      reimbursementRate,
+      reimbursementAmount: kilometers * reimbursementRate,
+      clientProject: String(form.get("clientProject") || original.clientProject || ""),
+      notes: String(form.get("notes") || ""),
+    };
+    persist({ ...state, trips: state.trips.map((item) => item.id === original.id ? next : item) });
+    closeDrawer();
   }
 
   function addInspection(event: FormEvent<HTMLFormElement>) {
@@ -600,7 +791,25 @@ function App() {
     };
     persist({ ...state, inspections: [inspection, ...state.inspections] });
     event.currentTarget.reset();
-    setDrawer(null);
+    closeDrawer();
+  }
+
+  function updateInspection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingRecord || editingRecord.type !== "inspection") return;
+    const original = editingRecord.item as Inspection;
+    const form = new FormData(event.currentTarget);
+    const next: Inspection = {
+      ...original,
+      type: String(form.get("type") || "Inspection"),
+      dueDate: String(form.get("dueDate") || today),
+      completedDate: String(form.get("completedDate") || ""),
+      result: String(form.get("result") || "Passed") as Result,
+      certificate: String(form.get("certificate") || ""),
+      reminderDays: Number(form.get("reminderDays") || 30),
+    };
+    persist({ ...state, inspections: state.inspections.map((item) => item.id === original.id ? next : item) });
+    closeDrawer();
   }
 
   function addMaintenance(event: FormEvent<HTMLFormElement>) {
@@ -619,7 +828,26 @@ function App() {
     };
     persist({ ...state, maintenance: [task, ...state.maintenance] });
     event.currentTarget.reset();
-    setDrawer(null);
+    closeDrawer();
+  }
+
+  function updateMaintenance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingRecord || editingRecord.type !== "maintenance") return;
+    const original = editingRecord.item as MaintenanceTask;
+    const form = new FormData(event.currentTarget);
+    const next: MaintenanceTask = {
+      ...original,
+      item: String(form.get("item") || "Service item"),
+      intervalKm: Number(form.get("intervalKm") || 10000),
+      lastDoneKm: Number(form.get("lastDoneKm") || activeVehicle.currentOdometer),
+      nextDueKm: Number(form.get("nextDueKm") || activeVehicle.currentOdometer + 10000),
+      dueDate: String(form.get("dueDate") || today),
+      status: String(form.get("status") || "Upcoming") as TaskStatus,
+      notes: String(form.get("notes") || ""),
+    };
+    persist({ ...state, maintenance: state.maintenance.map((item) => item.id === original.id ? next : item) });
+    closeDrawer();
   }
 
   function addOdometer(event: FormEvent<HTMLFormElement>) {
@@ -641,7 +869,25 @@ function App() {
     const doc: DocumentRecord = { id: uid("doc"), vehicleId: activeVehicle.id, type: String(form.get("type") || "Document"), title: String(form.get("title") || "Document"), fileName: String(form.get("fileName") || "file.pdf"), uploadDate: today, expiryDate: String(form.get("expiryDate") || ""), notes: String(form.get("notes") || ""), reminderDays: Number(form.get("reminderDays") || 30) };
     persist({ ...state, documents: [doc, ...state.documents] });
     event.currentTarget.reset();
-    setDrawer(null);
+    closeDrawer();
+  }
+
+  function updateDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingRecord || editingRecord.type !== "document") return;
+    const original = editingRecord.item as DocumentRecord;
+    const form = new FormData(event.currentTarget);
+    const next: DocumentRecord = {
+      ...original,
+      type: String(form.get("type") || "Document"),
+      title: String(form.get("title") || "Untitled document"),
+      fileName: String(form.get("fileName") || "document.pdf"),
+      expiryDate: String(form.get("expiryDate") || ""),
+      reminderDays: Number(form.get("reminderDays") || 30),
+      notes: String(form.get("notes") || ""),
+    };
+    persist({ ...state, documents: state.documents.map((item) => item.id === original.id ? next : item) });
+    closeDrawer();
   }
 
   function markMaintenanceDone(id: string) {
@@ -665,7 +911,7 @@ function App() {
     <main className={`${theme === "dark" ? "dark-mode" : ""} min-h-screen bg-[#F3EEE8] pb-24 text-slate-900 lg:pb-6`}>
       <div className="mx-auto grid w-full max-w-[1400px] gap-3 px-3 py-3 lg:px-5">
         <header className="sticky top-0 z-20 rounded-xl border border-[#3A2922] bg-[#17100D]/95 px-3 py-3 shadow-[0_18px_45px_rgba(42,23,18,0.22)] backdrop-blur">
-          <div className="grid gap-3 lg:grid-cols-[250px_minmax(260px,1fr)_auto] lg:items-center">
+          <div className="grid gap-3 lg:grid-cols-[250px_minmax(240px,1fr)_minmax(260px,360px)_auto] lg:items-center">
             <div>
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C58B5C]">Performance garage</p>
               <h1 className="text-xl font-bold tracking-tight text-white">Ownership Control Center</h1>
@@ -673,6 +919,20 @@ function App() {
             <SelectInput value={activeVehicle.id} onChange={(event) => persist({ ...state, activeVehicleId: event.target.value })}>
               {state.vehicles.filter((vehicle) => !vehicle.archived).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.year} {vehicle.make} {vehicle.model} · {vehicle.registration}</option>)}
             </SelectInput>
+            <div className="relative">
+              <input value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} onBlur={() => window.setTimeout(() => setCommandQuery(""), 150)} placeholder="Search vehicles, invoices, docs..." className="h-9 w-full rounded-md border border-white/10 bg-white/10 px-3 text-sm text-white outline-none placeholder:text-stone-400 focus:border-[#B87333] focus:ring-2 focus:ring-[#B87333]/20" />
+              {commandResults.length ? (
+                <div className="absolute left-0 right-0 top-11 z-50 overflow-hidden rounded-xl border border-[#3A2922] bg-white text-slate-900 shadow-2xl">
+                  {commandResults.map((result) => (
+                    <button key={result.id} onClick={() => runCommand(result)} className="grid w-full gap-0.5 border-b border-stone-100 px-3 py-2 text-left last:border-b-0 hover:bg-[#F7F1EA]">
+                      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#B87333]">{result.group}</span>
+                      <strong className="text-sm text-[#2A1712]">{result.label}</strong>
+                      <span className="truncate text-xs text-slate-500">{result.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
             <div className="flex flex-wrap gap-2">
               <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-stone-100 hover:bg-white/10">{theme === "dark" ? "Light mode" : "Dark mode"}</button>
               <button onClick={exportCsv} className="rounded-md bg-[#B87333] px-3 py-2 text-sm font-semibold text-white hover:bg-[#8F5526]">Export CSV</button>
@@ -743,24 +1003,25 @@ function App() {
           </aside>
 
           <section className="grid gap-4">
-            {view === "Dashboard" && <Dashboard analytics={analytics} state={state} activeVehicle={activeVehicle} costs={activeCosts} trips={activeTrips} inspections={activeInspections} maintenance={activeMaintenance} attentionItems={attentionItems} setView={setView} setDrawer={setDrawer} />}
-            {view === "Ledger" && <LedgerView costs={filteredCosts} query={query} setQuery={setQuery} filter={costFilter} setFilter={setCostFilter} addCost={addCost} archive={requestArchive} remove={requestDelete} setDrawer={setDrawer} />}
-            {view === "Trips" && <TripsView trips={activeTrips} addTrip={addTrip} archive={requestArchive} remove={requestDelete} setDrawer={setDrawer} />}
-            {view === "Vehicles" && <VehiclesView state={state} setActive={(id: string) => persist({ ...state, activeVehicleId: id })} restore={(id: string) => persist({ ...state, vehicles: state.vehicles.map((vehicle) => vehicle.id === id ? { ...vehicle, archived: false, status: "Active" } : vehicle) })} />}
-            {view === "Inspections" && <InspectionsView inspections={activeInspections} addInspection={addInspection} archive={requestArchive} remove={requestDelete} markDone={markInspectionDone} setDrawer={setDrawer} />}
-            {view === "Maintenance" && <MaintenanceView tasks={activeMaintenance} addMaintenance={addMaintenance} archive={requestArchive} remove={requestDelete} markDone={markMaintenanceDone} setDrawer={setDrawer} />}
-            {view === "Fuel" && <FuelView fuel={state.fuel.filter((item) => !item.archived && item.vehicleId === activeVehicle.id)} activeVehicle={activeVehicle} addFuel={addFuel} archive={requestArchive} remove={requestDelete} setDrawer={setDrawer} />}
-            {view === "Documents" && <DocumentsView docs={activeDocuments} addDocument={addDocument} archive={requestArchive} remove={requestDelete} setDrawer={setDrawer} />}
+            {view === "Dashboard" && <Dashboard analytics={analytics} state={state} activeVehicle={activeVehicle} costs={activeCosts} trips={activeTrips} inspections={activeInspections} maintenance={activeMaintenance} attentionItems={attentionItems} setView={setView} setDrawer={openDrawer} />}
+            {view === "VehicleDetail" && <VehicleDetailView state={state} activeVehicle={activeVehicle} costs={activeCosts} trips={activeTrips} inspections={activeInspections} maintenance={activeMaintenance} documents={activeDocuments} setView={setView} setEditingVehicle={setEditingVehicle} editRecord={openEdit} />}
+            {view === "Ledger" && <LedgerView costs={filteredCosts} query={query} setQuery={setQuery} filter={costFilter} setFilter={setCostFilter} archive={requestArchive} remove={requestDelete} setDrawer={openDrawer} editRecord={openEdit} />}
+            {view === "Trips" && <TripsView trips={activeTrips} archive={requestArchive} remove={requestDelete} setDrawer={openDrawer} editRecord={openEdit} />}
+            {view === "Vehicles" && <VehiclesView state={state} setActive={(id: string) => { persist({ ...state, activeVehicleId: id }); setView("VehicleDetail"); }} restore={(id: string) => persist({ ...state, vehicles: state.vehicles.map((vehicle) => vehicle.id === id ? { ...vehicle, archived: false, status: "Active" } : vehicle) })} />}
+            {view === "Inspections" && <InspectionsView inspections={activeInspections} archive={requestArchive} remove={requestDelete} markDone={markInspectionDone} setDrawer={openDrawer} editRecord={openEdit} />}
+            {view === "Maintenance" && <MaintenanceView tasks={activeMaintenance} archive={requestArchive} remove={requestDelete} markDone={markMaintenanceDone} setDrawer={openDrawer} editRecord={openEdit} />}
+            {view === "Fuel" && <FuelView fuel={state.fuel.filter((item) => !item.archived && item.vehicleId === activeVehicle.id)} activeVehicle={activeVehicle} archive={requestArchive} remove={requestDelete} setDrawer={openDrawer} editRecord={openEdit} />}
+            {view === "Documents" && <DocumentsView docs={activeDocuments} archive={requestArchive} remove={requestDelete} setDrawer={openDrawer} editRecord={openEdit} />}
             {view === "Reports" && <AnalyticsView state={state} activeVehicle={activeVehicle} analytics={analytics} />}
             {view === "Settings" && <SettingsView state={state} onReset={() => persist(seed)} />}
           </section>
         </section>
       </div>
 
-      <QuickAddDock open={quickOpen} setOpen={setQuickOpen} setDrawer={setDrawer} />
-      <MobileBottomNav view={view} setView={setView} setDrawer={setDrawer} />
+      <QuickAddDock open={quickOpen} setOpen={setQuickOpen} setDrawer={openDrawer} />
+      <MobileBottomNav view={view} setView={setView} setDrawer={openDrawer} />
       {editingVehicle ? <VehicleEditor vehicle={editingVehicle} onClose={() => setEditingVehicle(null)} onSave={updateVehicle} /> : null}
-      {drawer ? <RecordDrawer type={drawer} activeVehicle={activeVehicle} onClose={() => setDrawer(null)} forms={{ vehicle: addVehicle, cost: addCost, fuel: addFuel, trip: addTrip, inspection: addInspection, maintenance: addMaintenance, document: addDocument }} /> : null}
+      {drawer ? <RecordDrawer type={drawer} activeVehicle={activeVehicle} editingRecord={editingRecord} onClose={closeDrawer} forms={{ vehicle: addVehicle, cost: editingRecord?.type === "cost" ? updateCost : addCost, fuel: editingRecord?.type === "fuel" ? updateFuel : addFuel, trip: editingRecord?.type === "trip" ? updateTrip : addTrip, inspection: editingRecord?.type === "inspection" ? updateInspection : addInspection, maintenance: editingRecord?.type === "maintenance" ? updateMaintenance : addMaintenance, document: editingRecord?.type === "document" ? updateDocument : addDocument }} /> : null}
       {confirmAction ? <ConfirmDialog {...confirmAction} onClose={() => setConfirmAction(null)} /> : null}
     </main>
   );
@@ -1005,9 +1266,10 @@ function VehicleHomeCard({ activeVehicle, analytics, nextMaintenance, readinessS
             <span className="pb-2 text-sm font-semibold text-stone-300">/100</span>
           </div>
           <p className="mt-3 text-sm leading-5 text-stone-300">{readinessScore >= 80 ? "Ready for daily use." : readinessScore >= 62 ? "Good, with items to watch." : "Needs operator attention."}</p>
-          <div className="mt-4 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid gap-2">
             <button onClick={() => setDrawer("fuel")} className="rounded-md bg-[#B87333] px-3 py-2 text-sm font-semibold text-white hover:bg-[#8F5526]">Fuel/Charge</button>
             <button onClick={() => setView("Maintenance")} className="rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-stone-100 hover:bg-white/10">Service</button>
+            <button onClick={() => setView("VehicleDetail")} className="rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-stone-100 hover:bg-white/10">Vehicle file</button>
           </div>
         </div>
       </div>
@@ -1157,40 +1419,67 @@ function VehicleTimeline({ state, activeVehicle, costs, trips, inspections, main
   );
 }
 
-function LedgerView({ costs, query, setQuery, filter, setFilter, archive, remove, setDrawer }: any) {
-  return <Panel><SectionTitle eyebrow="Cost ledger" title="Expenses and invoices" action={<div className="flex flex-wrap gap-2"><TextInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ledger" /><SelectInput value={filter} onChange={(event) => setFilter(event.target.value)}><option>All</option>{costTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput><PrimaryButton onClick={() => setDrawer("cost")}>Add expense</PrimaryButton></div>} /><Table headers={["Date", "Type", "Vendor", "Amount", "Odometer", "Notes", "Actions"]}>{costs.map((item: CostEntry) => <tr key={item.id}><td>{item.date}</td><td><Badge>{item.type}</Badge></td><td>{item.vendor}</td><td className="text-right font-semibold">{eur2.format(item.amount)}</td><td className="text-right">{km.format(item.odometer)} km</td><td>{item.notes}</td><td><Actions onEdit={() => setDrawer("cost")} onArchive={() => archive("costs", item.id, item.vendor)} onDelete={() => remove("costs", item.id, item.vendor)} /></td></tr>)}</Table>{!costs.length ? <EmptyState title="No matching costs" detail="Try a different filter or add a new expense." /> : null}</Panel>;
+function VehicleDetailView({ state, activeVehicle, costs, trips, inspections, maintenance, documents, setView, setEditingVehicle, editRecord }: any) {
+  const fuel = state.fuel.filter((item: FuelEntry) => !item.archived && item.vehicleId === activeVehicle.id);
+  const totalCost = costs.reduce((sum: number, item: CostEntry) => sum + item.amount, 0);
+  const totalKm = trips.reduce((sum: number, item: Trip) => sum + item.kilometers, 0);
+  const nextService = maintenance.filter((item: MaintenanceTask) => item.status !== "Completed" && item.status !== "Skipped").sort((a: MaintenanceTask, b: MaintenanceTask) => a.nextDueKm - b.nextDueKm)[0];
+  const latestDoc = [...documents].sort((a: DocumentRecord, b: DocumentRecord) => (b.uploadDate || "").localeCompare(a.uploadDate || ""))[0];
+  return (
+    <div className="grid gap-3">
+      <Panel>
+        <SectionTitle eyebrow="Vehicle file" title={`${activeVehicle.year} ${activeVehicle.make} ${activeVehicle.model}`} action={<div className="flex flex-wrap gap-2"><button onClick={() => setEditingVehicle(activeVehicle)} className="rounded-md border border-[#B87333] bg-white px-3 py-1.5 text-xs font-semibold text-[#2A1712] hover:bg-[#F7F1EA]">Edit profile</button><button onClick={() => setView("Dashboard")} className="rounded-md bg-[#2A1712] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#120B09]">Dashboard</button></div>} />
+        <div className="grid gap-3 md:grid-cols-4">
+          <SummaryCard label="Total cost" value={eur.format(totalCost)} detail={`${costs.length} ledger entries`} />
+          <SummaryCard label="Cost per km" value={eur2.format(totalCost / Math.max(totalKm, 1))} detail={`${km.format(totalKm)} logged km`} />
+          <SummaryCard label="Next service" value={nextService ? nextService.item : "Current"} detail={nextService ? `${nextService.status} · ${nextService.dueDate}` : "No open service"} />
+          <SummaryCard label="Latest document" value={latestDoc ? latestDoc.type : "Missing"} detail={latestDoc ? latestDoc.title : "Add vehicle paperwork"} />
+        </div>
+      </Panel>
+      <div className="grid gap-3 xl:grid-cols-2">
+        <Panel><SectionTitle eyebrow="Recent costs" title="Ledger activity" action={<button onClick={() => setView("Ledger")} className="rounded-md border border-[#B87333] bg-white px-3 py-1.5 text-xs font-semibold text-[#2A1712]">Open ledger</button>} /><div className="grid gap-2">{costs.slice(0, 5).map((item: CostEntry) => <button key={item.id} onClick={() => editRecord("cost", item)} className="flex items-center justify-between gap-3 rounded-lg border border-stone-200 bg-white p-3 text-left hover:bg-[#F7F1EA]"><span><strong className="block text-sm text-[#2A1712]">{item.vendor}</strong><span className="text-sm text-slate-500">{item.date} · {item.type}</span></span><strong>{eur2.format(item.amount)}</strong></button>)}</div></Panel>
+        <Panel><SectionTitle eyebrow="Upcoming ownership" title="Service and compliance" /><div className="grid gap-2">{[...maintenance.slice(0, 3), ...inspections.slice(0, 3)].map((item: any) => <button key={item.id} onClick={() => item.item ? editRecord("maintenance", item) : editRecord("inspection", item)} className="rounded-lg border border-stone-200 bg-white p-3 text-left hover:bg-[#F7F1EA]"><strong className="block text-sm text-[#2A1712]">{item.item || item.type}</strong><span className="text-sm text-slate-500">{item.status || item.result || "Pending"} · due {item.dueDate}</span></button>)}</div></Panel>
+        <Panel><SectionTitle eyebrow="Trips and energy" title="Usage history" /><div className="grid gap-2">{[...trips.slice(0, 3), ...fuel.slice(0, 3)].map((item: any) => <button key={item.id} onClick={() => item.station ? editRecord("fuel", item) : editRecord("trip", item)} className="rounded-lg border border-stone-200 bg-white p-3 text-left hover:bg-[#F7F1EA]"><strong className="block text-sm text-[#2A1712]">{item.station || `${item.start} to ${item.end}`}</strong><span className="text-sm text-slate-500">{item.station ? `${eur2.format(item.totalCost)} · ${item.quantity.toFixed(1)} ${item.fuelType === "Electric" ? "kWh" : "L"}` : `${km.format(item.kilometers)} km · ${item.purpose}`}</span></button>)}</div></Panel>
+        <Panel><SectionTitle eyebrow="Documents" title="Vehicle vault" action={<button onClick={() => setView("Documents")} className="rounded-md border border-[#B87333] bg-white px-3 py-1.5 text-xs font-semibold text-[#2A1712]">Open vault</button>} /><div className="grid gap-2">{documents.slice(0, 5).map((doc: DocumentRecord) => <button key={doc.id} onClick={() => editRecord("document", doc)} className="rounded-lg border border-stone-200 bg-white p-3 text-left hover:bg-[#F7F1EA]"><strong className="block text-sm text-[#2A1712]">{doc.title}</strong><span className="text-sm text-slate-500">{doc.fileName} · {doc.expiryDate ? `expires ${doc.expiryDate}` : "no expiry"}</span></button>)}</div></Panel>
+      </div>
+    </div>
+  );
 }
 
-function CostForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Type"><SelectInput name="type">{costTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Vendor"><TextInput name="vendor" placeholder="Supplier" /></Field><Field label="Amount"><TextInput name="amount" type="number" step="0.01" /></Field><Field label="VAT"><TextInput name="vat" type="number" step="0.01" /></Field><Field label="Invoice"><TextInput name="invoiceNumber" placeholder="INV-001" /></Field><Field label="Payment"><TextInput name="paymentMethod" placeholder="Card" /></Field><Field label="Status"><SelectInput name="status"><option>Draft</option><option>Approved</option><option>Paid</option><option>Reimbursed</option><option>Rejected</option></SelectInput></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><Field label="Driver"><TextInput name="driver" placeholder="Driver" /></Field><Field label="Notes"><TextInput name="notes" placeholder="Details" /></Field><Field label="Receipt"><TextInput name="attachment" placeholder="receipt.pdf" /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">Add cost</button></form>;
+function LedgerView({ costs, query, setQuery, filter, setFilter, archive, remove, setDrawer, editRecord }: any) {
+  return <Panel><SectionTitle eyebrow="Cost ledger" title="Expenses and invoices" action={<div className="flex flex-wrap gap-2"><TextInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ledger" /><SelectInput value={filter} onChange={(event) => setFilter(event.target.value)}><option>All</option>{costTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput><PrimaryButton onClick={() => setDrawer("cost")}>Add expense</PrimaryButton></div>} /><Table headers={["Date", "Type", "Vendor", "Amount", "Odometer", "Notes", "Actions"]}>{costs.map((item: CostEntry) => <tr key={item.id}><td>{item.date}</td><td><Badge>{item.type}</Badge></td><td>{item.vendor}</td><td className="text-right font-semibold">{eur2.format(item.amount)}</td><td className="text-right">{km.format(item.odometer)} km</td><td>{item.notes}</td><td><Actions onEdit={() => editRecord("cost", item)} onArchive={() => archive("costs", item.id, item.vendor)} onDelete={() => remove("costs", item.id, item.vendor)} /></td></tr>)}</Table>{!costs.length ? <EmptyState title="No matching costs" detail="Try a different filter or add a new expense." /> : null}</Panel>;
+}
+
+function CostForm({ onSubmit, initial, submitLabel = "Add cost" }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; initial?: CostEntry; submitLabel?: string }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Date"><TextInput name="date" type="date" defaultValue={initial?.date || today} /></Field><Field label="Type"><SelectInput name="type" defaultValue={initial?.type}>{costTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Vendor"><TextInput name="vendor" placeholder="Supplier" defaultValue={initial?.vendor} /></Field><Field label="Amount"><TextInput name="amount" type="number" step="0.01" defaultValue={initial?.amount} /></Field><Field label="VAT"><TextInput name="vat" type="number" step="0.01" defaultValue={initial?.vat} /></Field><Field label="Invoice"><TextInput name="invoiceNumber" placeholder="INV-001" defaultValue={initial?.invoiceNumber} /></Field><Field label="Payment"><TextInput name="paymentMethod" placeholder="Card" defaultValue={initial?.paymentMethod} /></Field><Field label="Status"><SelectInput name="status" defaultValue={initial?.status || "Draft"}><option>Draft</option><option>Approved</option><option>Paid</option><option>Reimbursed</option><option>Rejected</option></SelectInput></Field><Field label="Odometer"><TextInput name="odometer" type="number" defaultValue={initial?.odometer} /></Field><Field label="Driver"><TextInput name="driver" placeholder="Driver" defaultValue={initial?.driver} /></Field><Field label="Notes"><TextInput name="notes" placeholder="Details" defaultValue={initial?.notes} /></Field><Field label="Receipt"><TextInput name="attachment" placeholder="receipt.pdf" defaultValue={initial?.attachment} /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">{submitLabel}</button></form>;
 }
 
 function VehicleForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Make"><TextInput name="make" placeholder="Toyota" /></Field><Field label="Model"><TextInput name="model" placeholder="Hilux" /></Field><Field label="Year"><TextInput name="year" type="number" placeholder="2024" /></Field><Field label="Registration"><TextInput name="registration" placeholder="LJ AB-123" /></Field><Field label="VIN"><TextInput name="vin" placeholder="Vehicle identification number" /></Field><Field label="Current odometer"><TextInput name="currentOdometer" type="number" placeholder="0" /></Field><Field label="Fuel"><SelectInput name="fuelType">{fuelTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field><Field label="Ownership"><SelectInput name="ownershipStatus">{ownershipTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">Create vehicle</button></form>;
 }
 
-function FuelForm({ activeVehicle, onSubmit }: { activeVehicle: Vehicle; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><Field label={activeVehicle.fuelType === "Electric" ? "kWh" : "Liters"}><TextInput name="quantity" type="number" step="0.01" /></Field><Field label="Unit price"><TextInput name="pricePerUnit" type="number" step="0.01" /></Field><Field label="Total"><TextInput name="totalCost" type="number" step="0.01" /></Field><Field label="Type"><SelectInput name="fuelType" defaultValue={activeVehicle.fuelType}>{fuelTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Station"><TextInput name="station" placeholder="Vendor" /></Field><Field label="Receipt"><TextInput name="receipt" placeholder="receipt.pdf" /></Field><Field label="Full tank"><input name="fullTank" type="checkbox" className="h-9 w-5 accent-[#B87333]" /></Field><Field label="Notes"><TextInput name="notes" placeholder="Route, pump, charger" /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">Add fuel</button></form>;
+function FuelForm({ activeVehicle, onSubmit, initial, submitLabel = "Add fuel" }: { activeVehicle: Vehicle; onSubmit: (event: FormEvent<HTMLFormElement>) => void; initial?: FuelEntry; submitLabel?: string }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Date"><TextInput name="date" type="date" defaultValue={initial?.date || today} /></Field><Field label="Odometer"><TextInput name="odometer" type="number" defaultValue={initial?.odometer} /></Field><Field label={activeVehicle.fuelType === "Electric" ? "kWh" : "Liters"}><TextInput name="quantity" type="number" step="0.01" defaultValue={initial?.quantity} /></Field><Field label="Unit price"><TextInput name="pricePerUnit" type="number" step="0.01" defaultValue={initial?.pricePerUnit} /></Field><Field label="Total"><TextInput name="totalCost" type="number" step="0.01" defaultValue={initial?.totalCost} /></Field><Field label="Distance since last"><TextInput name="distanceSinceLast" type="number" step="0.01" defaultValue={initial?.distanceSinceLast} /></Field><Field label="Type"><SelectInput name="fuelType" defaultValue={initial?.fuelType || activeVehicle.fuelType}>{fuelTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Station"><TextInput name="station" placeholder="Vendor" defaultValue={initial?.station} /></Field><Field label="Receipt"><TextInput name="receipt" placeholder="receipt.pdf" defaultValue={initial?.receipt} /></Field><Field label="Full tank"><input name="fullTank" type="checkbox" defaultChecked={initial?.fullTank} className="h-9 w-5 accent-[#B87333]" /></Field><Field label="Notes"><TextInput name="notes" placeholder="Route, pump, charger" defaultValue={initial?.notes} /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">{submitLabel}</button></form>;
 }
 
-function TripForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Purpose"><SelectInput name="purpose"><option>Business</option><option>Personal</option><option>Commute</option><option>Delivery</option><option>Service</option><option>Other</option></SelectInput></Field><Field label="Start"><TextInput name="start" /></Field><Field label="End"><TextInput name="end" /></Field><Field label="Km"><TextInput name="kilometers" type="number" /></Field><Field label="Driver"><TextInput name="driver" /></Field><Field label="Rate"><TextInput name="reimbursementRate" type="number" step="0.01" /></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">Add trip</button></form>;
+function TripForm({ onSubmit, initial, submitLabel = "Add trip" }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; initial?: Trip; submitLabel?: string }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Date"><TextInput name="date" type="date" defaultValue={initial?.date || today} /></Field><Field label="Purpose"><SelectInput name="purpose" defaultValue={initial?.purpose || "Business"}><option>Business</option><option>Personal</option><option>Commute</option><option>Delivery</option><option>Service</option><option>Other</option></SelectInput></Field><Field label="Start"><TextInput name="start" defaultValue={initial?.start} /></Field><Field label="End"><TextInput name="end" defaultValue={initial?.end} /></Field><Field label="Km"><TextInput name="kilometers" type="number" defaultValue={initial?.kilometers} /></Field><Field label="Driver"><TextInput name="driver" defaultValue={initial?.driver} /></Field><Field label="Rate"><TextInput name="reimbursementRate" type="number" step="0.01" defaultValue={initial?.reimbursementRate} /></Field><Field label="Project"><TextInput name="clientProject" defaultValue={initial?.clientProject} /></Field><Field label="Notes"><TextInput name="notes" defaultValue={initial?.notes} /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">{submitLabel}</button></form>;
 }
 
-function InspectionForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Type"><TextInput name="type" /></Field><Field label="Due"><TextInput name="dueDate" type="date" /></Field><Field label="Completed"><TextInput name="completedDate" type="date" /></Field><Field label="Result"><SelectInput name="result"><option>Passed</option><option>Conditional</option><option>Failed</option><option>Pending</option></SelectInput></Field><Field label="Certificate"><TextInput name="certificate" placeholder="file.pdf" /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={30} /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">Add inspection</button></form>;
+function InspectionForm({ onSubmit, initial, submitLabel = "Add inspection" }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; initial?: Inspection; submitLabel?: string }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Type"><TextInput name="type" defaultValue={initial?.type} /></Field><Field label="Due"><TextInput name="dueDate" type="date" defaultValue={initial?.dueDate} /></Field><Field label="Completed"><TextInput name="completedDate" type="date" defaultValue={initial?.completedDate} /></Field><Field label="Result"><SelectInput name="result" defaultValue={initial?.result || "Passed"}><option>Passed</option><option>Conditional</option><option>Failed</option><option>Pending</option></SelectInput></Field><Field label="Certificate"><TextInput name="certificate" placeholder="file.pdf" defaultValue={initial?.certificate} /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={initial?.reminderDays || 30} /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">{submitLabel}</button></form>;
 }
 
-function MaintenanceForm({ onSubmit, activeVehicle }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; activeVehicle: Vehicle }) {
-  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Item"><TextInput name="item" placeholder="Oil change" /></Field><Field label="Interval km"><TextInput name="intervalKm" type="number" defaultValue={10000} /></Field><Field label="Last done"><TextInput name="lastDoneKm" type="number" defaultValue={activeVehicle.currentOdometer} /></Field><Field label="Next due"><TextInput name="nextDueKm" type="number" defaultValue={activeVehicle.currentOdometer + 10000} /></Field><Field label="Due date"><TextInput name="dueDate" type="date" defaultValue={today} /></Field><Field label="Status"><SelectInput name="status"><option>Upcoming</option><option>Due soon</option><option>Overdue</option><option>Completed</option><option>Skipped</option></SelectInput></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">Add task</button></form>;
+function MaintenanceForm({ onSubmit, activeVehicle, initial, submitLabel = "Add task" }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; activeVehicle: Vehicle; initial?: MaintenanceTask; submitLabel?: string }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Item"><TextInput name="item" placeholder="Oil change" defaultValue={initial?.item} /></Field><Field label="Interval km"><TextInput name="intervalKm" type="number" defaultValue={initial?.intervalKm || 10000} /></Field><Field label="Last done"><TextInput name="lastDoneKm" type="number" defaultValue={initial?.lastDoneKm || activeVehicle.currentOdometer} /></Field><Field label="Next due"><TextInput name="nextDueKm" type="number" defaultValue={initial?.nextDueKm || activeVehicle.currentOdometer + 10000} /></Field><Field label="Due date"><TextInput name="dueDate" type="date" defaultValue={initial?.dueDate || today} /></Field><Field label="Status"><SelectInput name="status" defaultValue={initial?.status || "Upcoming"}><option>Upcoming</option><option>Due soon</option><option>Overdue</option><option>Completed</option><option>Skipped</option></SelectInput></Field><Field label="Notes"><TextInput name="notes" defaultValue={initial?.notes} /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">{submitLabel}</button></form>;
 }
 
-function DocumentForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Type"><SelectInput name="type"><option>Registration</option><option>Insurance</option><option>Inspection certificate</option><option>Service invoice</option><option>Fuel receipt</option><option>Warranty</option><option>Lease agreement</option><option>Tax document</option></SelectInput></Field><Field label="Title"><TextInput name="title" /></Field><Field label="File"><TextInput name="fileName" placeholder="file.pdf" /></Field><Field label="Expiry"><TextInput name="expiryDate" type="date" /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={30} /></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">Add document</button></form>;
+function DocumentForm({ onSubmit, initial, submitLabel = "Add document" }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; initial?: DocumentRecord; submitLabel?: string }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 sm:grid-cols-2"><Field label="Type"><SelectInput name="type" defaultValue={initial?.type || "Registration"}><option>Registration</option><option>Insurance</option><option>Inspection certificate</option><option>Service invoice</option><option>Fuel receipt</option><option>Warranty</option><option>Lease agreement</option><option>Tax document</option></SelectInput></Field><Field label="Title"><TextInput name="title" defaultValue={initial?.title} /></Field><Field label="File"><TextInput name="fileName" placeholder="file.pdf" defaultValue={initial?.fileName} /></Field><Field label="Expiry"><TextInput name="expiryDate" type="date" defaultValue={initial?.expiryDate} /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={initial?.reminderDays || 30} /></Field><Field label="Notes"><TextInput name="notes" defaultValue={initial?.notes} /></Field><button className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09] sm:col-span-2">{submitLabel}</button></form>;
 }
 
-function TripsView({ trips, archive, remove, setDrawer }: any) {
-  return <Panel><SectionTitle eyebrow="Trip log" title="Business, personal, and reimbursable travel" action={<button onClick={() => setDrawer("trip")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add trip</button>} /><Table headers={["Date", "Route", "Purpose", "Km", "Driver", "Reimbursement", "Actions"]}>{trips.map((trip: Trip) => <tr key={trip.id}><td>{trip.date}</td><td>{trip.start} {"->"} {trip.end}</td><td>{trip.purpose}</td><td className="text-right">{km.format(trip.kilometers)}</td><td>{trip.driver}</td><td className="text-right">{eur2.format(trip.kilometers * trip.reimbursementRate)}</td><td><Actions onEdit={() => setDrawer("trip")} onArchive={() => archive("trips", trip.id, trip.purpose)} onDelete={() => remove("trips", trip.id, trip.purpose)} /></td></tr>)}</Table>{!trips.length ? <EmptyState title="No trips yet" detail="Add a trip to build a mileage and reimbursement history." /> : null}</Panel>;
+function TripsView({ trips, archive, remove, setDrawer, editRecord }: any) {
+  return <Panel><SectionTitle eyebrow="Trip log" title="Business, personal, and reimbursable travel" action={<button onClick={() => setDrawer("trip")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add trip</button>} /><Table headers={["Date", "Route", "Purpose", "Km", "Driver", "Reimbursement", "Actions"]}>{trips.map((trip: Trip) => <tr key={trip.id}><td>{trip.date}</td><td>{trip.start} {"->"} {trip.end}</td><td>{trip.purpose}</td><td className="text-right">{km.format(trip.kilometers)}</td><td>{trip.driver}</td><td className="text-right">{eur2.format(trip.kilometers * trip.reimbursementRate)}</td><td><Actions onEdit={() => editRecord("trip", trip)} onArchive={() => archive("trips", trip.id, trip.purpose)} onDelete={() => remove("trips", trip.id, trip.purpose)} /></td></tr>)}</Table>{!trips.length ? <EmptyState title="No trips yet" detail="Add a trip to build a mileage and reimbursement history." /> : null}</Panel>;
 }
 
 function VehiclesView({ state, setActive, restore }: any) {
@@ -1203,27 +1492,27 @@ function VehiclesView({ state, setActive, restore }: any) {
   return <Panel><SectionTitle eyebrow="Vehicle register" title="Profiles, compliance, drivers, and ownership" /><Table headers={["Vehicle", "Status", "Driver", "Cost center", "Odometer", "Insurance", "Inspection", "Total cost", "Next service", "Actions"]}>{rows.map((row: any) => <tr key={row.vehicle.id} className={row.vehicle.archived ? "opacity-60" : ""}><td><strong>{row.vehicle.nickname || `${row.vehicle.year} ${row.vehicle.make} ${row.vehicle.model}`}</strong><p className="text-xs text-slate-500">{row.vehicle.registration} · {row.vehicle.vin}</p></td><td><div className="flex flex-wrap gap-1"><Badge>{row.vehicle.status || "Active"}</Badge><Badge>{row.vehicle.ownershipStatus}</Badge></div></td><td>{row.vehicle.assignedDriver || "Unassigned"}</td><td>{row.vehicle.department || "General"}</td><td>{km.format(row.vehicle.currentOdometer)} km</td><td>{row.vehicle.insuranceExpiry || "Missing"}</td><td>{row.vehicle.inspectionExpiry || "Missing"}</td><td className="font-bold">{eur.format(row.costs)}</td><td>{row.nextMaintenance ? `${row.nextMaintenance.item} at ${km.format(row.nextMaintenance.nextDueKm)} km` : "No schedule"}</td><td>{row.vehicle.archived ? <button onClick={() => restore(row.vehicle.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white">Restore</button> : <button onClick={() => setActive(row.vehicle.id)} className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-xs font-bold text-slate-700">Open</button>}</td></tr>)}</Table></Panel>;
 }
 
-function FuelView({ fuel, activeVehicle, archive, remove, setDrawer }: any) {
+function FuelView({ fuel, activeVehicle, archive, remove, setDrawer, editRecord }: any) {
   const totalCost = fuel.reduce((sum: number, item: FuelEntry) => sum + item.totalCost, 0);
   const totalQuantity = fuel.reduce((sum: number, item: FuelEntry) => sum + item.quantity, 0);
   const totalDistance = fuel.reduce((sum: number, item: FuelEntry) => sum + item.distanceSinceLast, 0);
-  return <Panel><SectionTitle eyebrow="Fuel and charging" title="Consumption, fill-ups, and energy cost" action={<button onClick={() => setDrawer("fuel")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add fuel</button>} /><div className="mb-4 grid gap-3 md:grid-cols-3"><SummaryCard label="Energy spend" value={eur.format(totalCost)} detail={`${fuel.length} fuel or charging sessions`} /><SummaryCard label={activeVehicle.fuelType === "Electric" ? "kWh charged" : "Liters purchased"} value={km.format(totalQuantity)} detail={activeVehicle.fuelType === "Electric" ? "Electric charging" : "Fuel quantity"} /><SummaryCard label="Average economy" value={totalDistance ? `${(totalQuantity / totalDistance * 100).toFixed(1)} ${activeVehicle.fuelType === "Electric" ? "kWh" : "L"}/100 km` : "0"} detail={`${km.format(totalDistance)} km between entries`} /></div><Table headers={["Date", "Odometer", "Quantity", "Unit price", "Total", "Vendor", "Distance", "Economy", "Cost/km", "Actions"]}>{fuel.map((item: FuelEntry) => <tr key={item.id}><td>{item.date}</td><td className="text-right">{km.format(item.odometer)} km</td><td className="text-right">{item.quantity.toFixed(2)} {item.fuelType === "Electric" ? "kWh" : "L"}</td><td className="text-right">{eur2.format(item.pricePerUnit)}</td><td className="text-right font-semibold">{eur2.format(item.totalCost)}</td><td>{item.station}</td><td className="text-right">{km.format(item.distanceSinceLast)} km</td><td className="text-right">{item.economy.toFixed(1)} {item.fuelType === "Electric" ? "kWh" : "L"}/100 km</td><td className="text-right">{eur2.format(item.costPerKm)}</td><td><Actions onEdit={() => setDrawer("fuel")} onArchive={() => archive("fuel", item.id, item.station)} onDelete={() => remove("fuel", item.id, item.station)} /></td></tr>)}</Table>{!fuel.length ? <EmptyState title="No fuel records yet" detail="Add the first fill-up or charging session to calculate efficiency." /> : null}</Panel>;
+  return <Panel><SectionTitle eyebrow="Fuel and charging" title="Consumption, fill-ups, and energy cost" action={<button onClick={() => setDrawer("fuel")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add fuel</button>} /><div className="mb-4 grid gap-3 md:grid-cols-3"><SummaryCard label="Energy spend" value={eur.format(totalCost)} detail={`${fuel.length} fuel or charging sessions`} /><SummaryCard label={activeVehicle.fuelType === "Electric" ? "kWh charged" : "Liters purchased"} value={km.format(totalQuantity)} detail={activeVehicle.fuelType === "Electric" ? "Electric charging" : "Fuel quantity"} /><SummaryCard label="Average economy" value={totalDistance ? `${(totalQuantity / totalDistance * 100).toFixed(1)} ${activeVehicle.fuelType === "Electric" ? "kWh" : "L"}/100 km` : "0"} detail={`${km.format(totalDistance)} km between entries`} /></div><Table headers={["Date", "Odometer", "Quantity", "Unit price", "Total", "Vendor", "Distance", "Economy", "Cost/km", "Actions"]}>{fuel.map((item: FuelEntry) => <tr key={item.id}><td>{item.date}</td><td className="text-right">{km.format(item.odometer)} km</td><td className="text-right">{item.quantity.toFixed(2)} {item.fuelType === "Electric" ? "kWh" : "L"}</td><td className="text-right">{eur2.format(item.pricePerUnit)}</td><td className="text-right font-semibold">{eur2.format(item.totalCost)}</td><td>{item.station}</td><td className="text-right">{km.format(item.distanceSinceLast)} km</td><td className="text-right">{item.economy.toFixed(1)} {item.fuelType === "Electric" ? "kWh" : "L"}/100 km</td><td className="text-right">{eur2.format(item.costPerKm)}</td><td><Actions onEdit={() => editRecord("fuel", item)} onArchive={() => archive("fuel", item.id, item.station)} onDelete={() => remove("fuel", item.id, item.station)} /></td></tr>)}</Table>{!fuel.length ? <EmptyState title="No fuel records yet" detail="Add the first fill-up or charging session to calculate efficiency." /> : null}</Panel>;
 }
 
-function InspectionsView({ inspections, archive, remove, markDone, setDrawer }: any) {
-  return <Panel><SectionTitle eyebrow="Inspection calendar" title="Due dates, certificates, and reminders" action={<button onClick={() => setDrawer("inspection")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add inspection</button>} /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{inspections.map((item: Inspection) => <article key={item.id} className="rounded-xl border border-stone-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><strong>{item.type}</strong><Badge tone={badgeTone(daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Pending")}>{daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Pending"}</Badge></div><p className="mt-2 text-sm text-slate-500">Due {item.dueDate} · reminder {item.reminderDays} days</p><p className="text-sm text-slate-500">Certificate: {item.certificate || "Not uploaded"}</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => markDone(item.id)} className="rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Mark complete</button><Actions onEdit={() => setDrawer("inspection")} onArchive={() => archive("inspections", item.id, item.type)} onDelete={() => remove("inspections", item.id, item.type)} /></div></article>)}</div>{!inspections.length ? <EmptyState title="No inspections" detail="Add inspection and compliance records to track due dates." /> : null}</Panel>;
+function InspectionsView({ inspections, archive, remove, markDone, setDrawer, editRecord }: any) {
+  return <Panel><SectionTitle eyebrow="Inspection calendar" title="Due dates, certificates, and reminders" action={<button onClick={() => setDrawer("inspection")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add inspection</button>} /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{inspections.map((item: Inspection) => <article key={item.id} className="rounded-xl border border-stone-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><strong>{item.type}</strong><Badge tone={badgeTone(daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Pending")}>{daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Pending"}</Badge></div><p className="mt-2 text-sm text-slate-500">Due {item.dueDate} · reminder {item.reminderDays} days</p><p className="text-sm text-slate-500">Certificate: {item.certificate || "Not uploaded"}</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => markDone(item.id)} className="rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Mark complete</button><Actions onEdit={() => editRecord("inspection", item)} onArchive={() => archive("inspections", item.id, item.type)} onDelete={() => remove("inspections", item.id, item.type)} /></div></article>)}</div>{!inspections.length ? <EmptyState title="No inspections" detail="Add inspection and compliance records to track due dates." /> : null}</Panel>;
 }
 
-function MaintenanceView({ tasks, archive, remove, markDone, setDrawer }: any) {
-  return <Panel><SectionTitle eyebrow="Maintenance schedule" title="Service tasks and mileage intervals" action={<button onClick={() => setDrawer("maintenance")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add service task</button>} /><Table headers={["Item", "Status", "Last done", "Next due", "Due date", "Notes", "Actions"]}>{tasks.map((task: MaintenanceTask) => <tr key={task.id}><td className="font-semibold">{task.item}</td><td><Badge>{task.status}</Badge></td><td className="text-right">{km.format(task.lastDoneKm)} km</td><td className="text-right">{km.format(task.nextDueKm)} km</td><td>{task.dueDate}</td><td>{task.notes}</td><td><div className="flex flex-wrap gap-2"><button onClick={() => markDone(task.id)} className="rounded-md bg-emerald-700 px-2.5 py-1.5 text-xs font-semibold text-white">Complete</button><Actions onEdit={() => setDrawer("maintenance")} onArchive={() => archive("maintenance", task.id, task.item)} onDelete={() => remove("maintenance", task.id, task.item)} /></div></td></tr>)}</Table>{!tasks.length ? <EmptyState title="No service tasks" detail="Add maintenance intervals to forecast upcoming work." /> : null}</Panel>;
+function MaintenanceView({ tasks, archive, remove, markDone, setDrawer, editRecord }: any) {
+  return <Panel><SectionTitle eyebrow="Maintenance schedule" title="Service tasks and mileage intervals" action={<button onClick={() => setDrawer("maintenance")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add service task</button>} /><Table headers={["Item", "Status", "Last done", "Next due", "Due date", "Notes", "Actions"]}>{tasks.map((task: MaintenanceTask) => <tr key={task.id}><td className="font-semibold">{task.item}</td><td><Badge>{task.status}</Badge></td><td className="text-right">{km.format(task.lastDoneKm)} km</td><td className="text-right">{km.format(task.nextDueKm)} km</td><td>{task.dueDate}</td><td>{task.notes}</td><td><div className="flex flex-wrap gap-2"><button onClick={() => markDone(task.id)} className="rounded-md bg-emerald-700 px-2.5 py-1.5 text-xs font-semibold text-white">Complete</button><Actions onEdit={() => editRecord("maintenance", task)} onArchive={() => archive("maintenance", task.id, task.item)} onDelete={() => remove("maintenance", task.id, task.item)} /></div></td></tr>)}</Table>{!tasks.length ? <EmptyState title="No service tasks" detail="Add maintenance intervals to forecast upcoming work." /> : null}</Panel>;
 }
 
 function OdometerView({ points, addOdometer, remove }: any) {
   return <Panel><SectionTitle eyebrow="Odometer history" title="Mileage updates and distance calculations" /><form onSubmit={addOdometer} className="mb-4 grid gap-2 rounded-xl border border-stone-200 bg-[#F7F1EA] p-3 lg:grid-cols-5"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><Field label="Driver"><TextInput name="driver" /></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="self-end rounded-lg bg-[#2A1712] px-3 py-2 text-sm font-bold text-white hover:bg-[#120B09]">Add update</button></form><Table headers={["Date", "Odometer", "Delta", "Driver", "Notes", "Actions"]}>{points.map((point: OdometerPoint, index: number) => <tr key={point.id}><td>{point.date}</td><td>{km.format(point.odometer)} km</td><td>{index ? `${km.format(point.odometer - points[index - 1].odometer)} km` : "Baseline"}</td><td>{point.driver}</td><td>{point.notes}</td><td><button onClick={() => remove("odometer", point.id)} className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">Delete</button></td></tr>)}</Table></Panel>;
 }
 
-function DocumentsView({ docs, archive, remove, setDrawer }: any) {
-  return <Panel><SectionTitle eyebrow="Document vault" title="Registration, insurance, invoices, inspections, warranty papers" action={<button onClick={() => setDrawer("document")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add document</button>} /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{docs.map((doc: DocumentRecord) => <article key={doc.id} className="rounded-xl border border-stone-200 bg-white p-4"><div className="mb-4 rounded-lg bg-[#2A1712] p-4 text-white"><span className="text-xs font-bold uppercase tracking-wide text-white/65">{doc.fileName.split(".").pop() || "doc"}</span><strong className="mt-8 block text-lg">{doc.type}</strong></div><strong>{doc.title}</strong><p className="mt-1 text-sm text-slate-500">{doc.fileName}</p><p className="text-sm text-slate-500">{doc.expiryDate ? `Expires ${doc.expiryDate}` : "No expiry"}</p><p className="text-sm text-slate-500">Uploaded {doc.uploadDate || "today"} · reminder {doc.reminderDays || 0} days</p><div className="mt-4"><Actions onEdit={() => setDrawer("document")} onArchive={() => archive("documents", doc.id, doc.title)} onDelete={() => remove("documents", doc.id, doc.title)} /></div></article>)}</div>{!docs.length ? <EmptyState title="No documents yet" detail="Add insurance, registration, invoices, or receipts to keep a complete vehicle file." /> : null}</Panel>;
+function DocumentsView({ docs, archive, remove, setDrawer, editRecord }: any) {
+  return <Panel><SectionTitle eyebrow="Document vault" title="Registration, insurance, invoices, inspections, warranty papers" action={<button onClick={() => setDrawer("document")} className="rounded-md bg-[#2A1712] px-3 py-2 text-sm font-semibold text-white hover:bg-[#120B09]">Add document</button>} /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{docs.map((doc: DocumentRecord) => <article key={doc.id} className="rounded-xl border border-stone-200 bg-white p-4"><div className="mb-4 rounded-lg bg-[#2A1712] p-4 text-white"><span className="text-xs font-bold uppercase tracking-wide text-white/65">{doc.fileName.split(".").pop() || "doc"}</span><strong className="mt-8 block text-lg">{doc.type}</strong></div><strong>{doc.title}</strong><p className="mt-1 text-sm text-slate-500">{doc.fileName}</p><p className="text-sm text-slate-500">{doc.expiryDate ? `Expires ${doc.expiryDate}` : "No expiry"}</p><p className="text-sm text-slate-500">Uploaded {doc.uploadDate || "today"} · reminder {doc.reminderDays || 0} days</p><div className="mt-4"><Actions onEdit={() => editRecord("document", doc)} onArchive={() => archive("documents", doc.id, doc.title)} onDelete={() => remove("documents", doc.id, doc.title)} /></div></article>)}</div>{!docs.length ? <EmptyState title="No documents yet" detail="Add insurance, registration, invoices, or receipts to keep a complete vehicle file." /> : null}</Panel>;
 }
 
 function SettingsView({ state, onReset }: any) {
@@ -1292,19 +1581,21 @@ function MobileBottomNav({ view, setView, setDrawer }: { view: View; setView: (v
   );
 }
 
-function RecordDrawer({ type, activeVehicle, onClose, forms }: { type: Exclude<DrawerType, null>; activeVehicle: Vehicle; onClose: () => void; forms: Record<Exclude<DrawerType, null>, (event: FormEvent<HTMLFormElement>) => void> }) {
+function RecordDrawer({ type, activeVehicle, editingRecord, onClose, forms }: { type: Exclude<DrawerType, null>; activeVehicle: Vehicle; editingRecord: EditingRecord | null; onClose: () => void; forms: Record<Exclude<DrawerType, null>, (event: FormEvent<HTMLFormElement>) => void> }) {
   const titles: Record<Exclude<DrawerType, null>, string> = { vehicle: "Add vehicle", cost: "Add expense", fuel: "Add fuel or charge", trip: "Add trip", inspection: "Add inspection", maintenance: "Add service task", document: "Add document" };
+  const editing = editingRecord?.type === type ? editingRecord.item : undefined;
+  const title = editing ? titles[type].replace("Add", "Edit") : titles[type];
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35">
       <aside className="h-full w-full max-w-xl overflow-y-auto border-l border-stone-200 bg-white p-5 shadow-2xl">
-        <SectionTitle eyebrow="Record drawer" title={titles[type]} action={<button onClick={onClose} className="rounded-md border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-[#2A1712] hover:bg-[#F7F1EA]">Close</button>} />
+        <SectionTitle eyebrow={editing ? "Edit record" : "Record drawer"} title={title} action={<button onClick={onClose} className="rounded-md border border-stone-200 bg-white px-3 py-1.5 text-sm font-semibold text-[#2A1712] hover:bg-[#F7F1EA]">Close</button>} />
         {type === "vehicle" && <VehicleForm onSubmit={forms.vehicle} />}
-        {type === "cost" && <CostForm onSubmit={forms.cost} />}
-        {type === "fuel" && <FuelForm activeVehicle={activeVehicle} onSubmit={forms.fuel} />}
-        {type === "trip" && <TripForm onSubmit={forms.trip} />}
-        {type === "inspection" && <InspectionForm onSubmit={forms.inspection} />}
-        {type === "maintenance" && <MaintenanceForm onSubmit={forms.maintenance} activeVehicle={activeVehicle} />}
-        {type === "document" && <DocumentForm onSubmit={forms.document} />}
+        {type === "cost" && <CostForm onSubmit={forms.cost} initial={editing as CostEntry | undefined} submitLabel={editing ? "Save cost" : "Add cost"} />}
+        {type === "fuel" && <FuelForm activeVehicle={activeVehicle} onSubmit={forms.fuel} initial={editing as FuelEntry | undefined} submitLabel={editing ? "Save fuel" : "Add fuel"} />}
+        {type === "trip" && <TripForm onSubmit={forms.trip} initial={editing as Trip | undefined} submitLabel={editing ? "Save trip" : "Add trip"} />}
+        {type === "inspection" && <InspectionForm onSubmit={forms.inspection} initial={editing as Inspection | undefined} submitLabel={editing ? "Save inspection" : "Add inspection"} />}
+        {type === "maintenance" && <MaintenanceForm onSubmit={forms.maintenance} activeVehicle={activeVehicle} initial={editing as MaintenanceTask | undefined} submitLabel={editing ? "Save task" : "Add task"} />}
+        {type === "document" && <DocumentForm onSubmit={forms.document} initial={editing as DocumentRecord | undefined} submitLabel={editing ? "Save document" : "Add document"} />}
       </aside>
     </div>
   );
