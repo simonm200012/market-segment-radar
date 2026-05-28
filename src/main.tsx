@@ -783,7 +783,6 @@ function Info({ label, value, wide }: { label: string; value: string; wide?: boo
 }
 
 function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections, maintenance, attentionItems, setView, setDrawer }: any) {
-  const maxMonthly = Math.max(...analytics.monthlyByType.map((row: any) => row.total), 1);
   const monthFuel = costs.filter((item: CostEntry) => item.type === "Fuel" && monthOf(item.date) === analytics.month).reduce((sum: number, item: CostEntry) => sum + item.amount, 0);
   const monthMaintenance = costs.filter((item: CostEntry) => ["Maintenance", "Repairs", "Tires"].includes(item.type) && monthOf(item.date) === analytics.month).reduce((sum: number, item: CostEntry) => sum + item.amount, 0);
   const expiringDocuments = state.documents.filter((doc: DocumentRecord) => !doc.archived && doc.expiryDate && daysUntil(doc.expiryDate) <= (doc.reminderDays || 30));
@@ -881,7 +880,7 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_330px]">
         <Panel>
           <SectionTitle eyebrow="Monthly spending" title={`${analytics.month} cost mix`} />
-          {analytics.monthlyByType.length ? <div className="grid min-h-56 grid-cols-2 items-end gap-3 md:grid-cols-5 lg:grid-cols-10">{analytics.monthlyByType.map((row: any) => <div key={row.type} className="grid h-full content-end gap-2 text-center"><div className="rounded-t-md bg-[#B87333] shadow-[0_8px_18px_rgba(184,115,51,0.18)]" style={{ height: `${Math.max((row.total / maxMonthly) * 150, 14)}px` }} /><strong className="text-xs text-[#2A1712]">{eur.format(row.total)}</strong><span className="text-[11px] text-slate-500">{row.type}</span></div>)}</div> : <EmptyState title="No spend this month" detail="Add fuel, service, insurance, tolls, or other ledger entries." />}
+          {analytics.monthlyByType.length ? <MonthlyCostMixChart rows={analytics.monthlyByType} /> : <EmptyState title="No spend this month" detail="Add fuel, service, insurance, tolls, or other ledger entries." />}
         </Panel>
         <Panel>
           <SectionTitle eyebrow="Next 30 days" title="Upcoming work" />
@@ -893,6 +892,51 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
 
       <VehicleTimeline state={state} activeVehicle={activeVehicle} costs={costs} trips={trips} inspections={inspections} maintenance={maintenance} setView={setView} />
     </>
+  );
+}
+
+function MonthlyCostMixChart({ rows }: { rows: Array<{ type: string; total: number }> }) {
+  const sortedRows = [...rows].sort((a, b) => b.total - a.total);
+  const max = Math.max(...sortedRows.map((row) => row.total), 1);
+  const total = sortedRows.reduce((sum, row) => sum + row.total, 0);
+
+  return (
+    <div className="mt-2 grid gap-4">
+      <div
+        className="grid min-h-52 items-end gap-3 border-b border-stone-200 pb-3"
+        style={{ gridTemplateColumns: `repeat(${sortedRows.length}, minmax(0, 1fr))` }}
+      >
+        {sortedRows.map((row) => {
+          const percent = total ? (row.total / total) * 100 : 0;
+          const height = Math.max((row.total / max) * 140, 18);
+          return (
+            <div key={row.type} className="group grid h-full content-end gap-2 text-center">
+              <div className="relative flex h-36 items-end rounded-md bg-[#F7F1EA]">
+                <div
+                  className="w-full rounded-md bg-[#B87333] shadow-[0_8px_18px_rgba(184,115,51,0.18)] transition-all group-hover:bg-[#8F5526]"
+                  style={{ height: `${height}px` }}
+                />
+                <span className="pointer-events-none absolute left-1/2 top-2 hidden -translate-x-1/2 rounded-md bg-[#2A1712] px-2 py-1 text-[11px] font-bold text-white shadow-lg group-hover:block">
+                  {percent.toFixed(0)}%
+                </span>
+              </div>
+              <strong className="text-sm font-bold text-[#2A1712]">{eur.format(row.total)}</strong>
+              <span className="truncate text-xs text-slate-500" title={row.type}>{row.type}</span>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {sortedRows.map((row) => {
+          const percent = total ? (row.total / total) * 100 : 0;
+          return (
+            <span key={row.type} className="rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-600">
+              {row.type} · {percent.toFixed(0)}%
+            </span>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
