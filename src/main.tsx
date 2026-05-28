@@ -12,6 +12,7 @@ type TripPurpose = "Business" | "Personal" | "Commute" | "Delivery" | "Service" 
 type Result = "Passed" | "Failed" | "Conditional" | "Pending";
 type TaskStatus = "Upcoming" | "Due soon" | "Overdue" | "Completed" | "Skipped";
 type View = "Dashboard" | "Vehicles" | "Ledger" | "Trips" | "Fuel" | "Maintenance" | "Inspections" | "Documents" | "Reports" | "Settings";
+type DrawerType = "vehicle" | "cost" | "fuel" | "trip" | "inspection" | "maintenance" | "document" | null;
 
 type Vehicle = {
   id: string;
@@ -257,6 +258,25 @@ function monthOf(date: string) {
   return date.slice(0, 7);
 }
 
+function previousMonth(month: string) {
+  const date = new Date(`${month}-01T00:00:00`);
+  date.setMonth(date.getMonth() - 1);
+  return date.toISOString().slice(0, 7);
+}
+
+function pctChange(current: number, previous: number) {
+  if (!previous && !current) return "No change";
+  if (!previous) return "New activity";
+  const value = ((current - previous) / previous) * 100;
+  return `${value >= 0 ? "+" : ""}${value.toFixed(0)}% vs prior month`;
+}
+
+function dueWithin(date: string | undefined, days = 30) {
+  if (!date) return false;
+  const due = daysUntil(date);
+  return due <= days;
+}
+
 function download(filename: string, content: string, type = "text/csv") {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -318,6 +338,8 @@ function App() {
   const [query, setQuery] = useState("");
   const [costFilter, setCostFilter] = useState<CostType | "All">("All");
   const [editingVehicle, setEditingVehicle] = useState<Vehicle | null>(null);
+  const [drawer, setDrawer] = useState<DrawerType>(null);
+  const [confirmAction, setConfirmAction] = useState<{ title: string; detail: string; action: () => void } | null>(null);
 
   const persist = (next: FleetState) => {
     setState(next);
@@ -334,22 +356,45 @@ function App() {
 
   const analytics = useMemo(() => {
     const month = today.slice(0, 7);
+    const priorMonth = previousMonth(month);
     const monthlyCosts = state.costs.filter((cost) => !cost.archived && monthOf(cost.date) === month);
+    const priorCosts = state.costs.filter((cost) => !cost.archived && monthOf(cost.date) === priorMonth);
+    const monthlyTrips = state.trips.filter((trip) => !trip.archived && monthOf(trip.date) === month);
+    const priorTrips = state.trips.filter((trip) => !trip.archived && monthOf(trip.date) === priorMonth);
     const vehicleCost = activeCosts.reduce((sum, item) => sum + item.amount, 0);
     const fleetCost = state.costs.filter((item) => !item.archived).reduce((sum, item) => sum + item.amount, 0);
     const vehicleKm = activeTrips.reduce((sum, trip) => sum + trip.kilometers, 0);
     const fleetKm = state.trips.filter((trip) => !trip.archived).reduce((sum, trip) => sum + trip.kilometers, 0);
     const overdue = state.maintenance.filter((item) => !item.archived && item.status === "Overdue");
     const inspectionsDue = state.inspections.filter((item) => !item.archived && daysUntil(item.dueDate) <= item.reminderDays);
+    const activeVehicleCost = activeCosts.filter((cost) => monthOf(cost.date) === month).reduce((sum, item) => sum + item.amount, 0);
+    const activeVehicleKm = activeTrips.filter((trip) => monthOf(trip.date) === month).reduce((sum, item) => sum + item.kilometers, 0);
     const monthlyByType = costTypes.map((type) => ({ type, total: monthlyCosts.filter((cost) => cost.type === type).reduce((sum, cost) => sum + cost.amount, 0) })).filter((row) => row.total);
-    return { month, monthlyCost: monthlyCosts.reduce((sum, item) => sum + item.amount, 0), vehicleCost, fleetCost, vehicleKm, fleetKm, overdue, inspectionsDue, monthlyByType };
+    const maintenanceSpend = monthlyCosts.filter((cost) => ["Maintenance", "Repairs", "Tires"].includes(cost.type)).reduce((sum, item) => sum + item.amount, 0);
+    const fuelSpend = monthlyCosts.filter((cost) => cost.type === "Fuel").reduce((sum, item) => sum + item.amount, 0);
+    const priorMaintenanceSpend = priorCosts.filter((cost) => ["Maintenance", "Repairs", "Tires"].includes(cost.type)).reduce((sum, item) => sum + item.amount, 0);
+    const priorFuelSpend = priorCosts.filter((cost) => cost.type === "Fuel").reduce((sum, item) => sum + item.amount, 0);
+    const priorMonthlyCost = priorCosts.reduce((sum, item) => sum + item.amount, 0);
+    const monthlyKm = monthlyTrips.reduce((sum, item) => sum + item.kilometers, 0);
+    const priorKm = priorTrips.reduce((sum, item) => sum + item.kilometers, 0);
+    return { month, priorMonth, monthlyCost: monthlyCosts.reduce((sum, item) => sum + item.amount, 0), priorMonthlyCost, monthlyKm, priorKm, fuelSpend, priorFuelSpend, maintenanceSpend, priorMaintenanceSpend, activeVehicleCost, activeVehicleKm, vehicleCost, fleetCost, vehicleKm, fleetKm, overdue, inspectionsDue, monthlyByType };
   }, [state, activeVehicle.id]);
 
-  const alerts = [
-    ...activeInspections.filter((item) => daysUntil(item.dueDate) <= item.reminderDays).map((item) => ({ title: item.type, detail: `${daysUntil(item.dueDate) < 0 ? "Expired" : "Due"} ${item.dueDate}`, tone: daysUntil(item.dueDate) < 0 ? "critical" : "warning" })),
-    ...activeMaintenance.filter((item) => item.status === "Overdue" || item.status === "Due soon").map((item) => ({ title: item.item, detail: `${item.status} at ${km.format(item.nextDueKm)} km`, tone: item.status === "Overdue" ? "critical" : "warning" })),
-    ...activeCosts.filter((item) => item.amount > 900).map((item) => ({ title: "Abnormal cost", detail: `${item.vendor}: ${eur.format(item.amount)}`, tone: "warning" })),
-  ].slice(0, 6);
+  const attentionItems = [
+    ...state.inspections.filter((item) => !item.archived && daysUntil(item.dueDate) <= item.reminderDays).map((item) => {
+      const vehicle = state.vehicles.find((entry) => entry.id === item.vehicleId);
+      return { priority: daysUntil(item.dueDate) < 0 ? "Critical" : "Due soon", title: item.type, detail: `${vehicle?.registration || "Vehicle"} · ${daysUntil(item.dueDate) < 0 ? "expired" : "due"} ${item.dueDate}`, view: "Inspections" as View };
+    }),
+    ...state.maintenance.filter((item) => !item.archived && (item.status === "Overdue" || item.status === "Due soon")).map((item) => {
+      const vehicle = state.vehicles.find((entry) => entry.id === item.vehicleId);
+      return { priority: item.status === "Overdue" ? "Critical" : "Due soon", title: item.item, detail: `${vehicle?.registration || "Vehicle"} · ${item.status.toLowerCase()} at ${km.format(item.nextDueKm)} km`, view: "Maintenance" as View };
+    }),
+    ...state.vehicles.filter((vehicle) => !vehicle.archived && dueWithin(vehicle.registrationExpiry, 30)).map((vehicle) => ({ priority: "Due soon", title: "Registration renewal", detail: `${vehicle.registration} · expires ${vehicle.registrationExpiry}`, view: "Vehicles" as View })),
+    ...state.vehicles.filter((vehicle) => !vehicle.archived && dueWithin(vehicle.inspectionExpiry, 30)).map((vehicle) => ({ priority: "Due soon", title: "Inspection expiry", detail: `${vehicle.registration} · expires ${vehicle.inspectionExpiry}`, view: "Vehicles" as View })),
+    ...state.costs.filter((item) => !item.archived && item.amount > 900).map((item) => ({ priority: "Review", title: "High cost entry", detail: `${item.vendor} · ${eur.format(item.amount)}`, view: "Ledger" as View })),
+  ].slice(0, 8);
+
+  const alerts = attentionItems.slice(0, 4).map((item) => ({ title: item.title, detail: item.detail, tone: item.priority === "Critical" ? "critical" : "warning" }));
 
   const filteredCosts = activeCosts.filter((item) => {
     const haystack = `${item.vendor} ${item.notes} ${item.type}`.toLowerCase();
@@ -366,6 +411,14 @@ function App() {
     const list = state[collection];
     if (!Array.isArray(list)) return;
     persist({ ...state, [collection]: list.filter((item: any) => item.id !== id) });
+  };
+
+  const requestArchive = (collection: keyof FleetState, id: string, label: string) => {
+    setConfirmAction({ title: `Archive ${label}?`, detail: "This keeps the record in storage but removes it from active views.", action: () => archive(collection, id) });
+  };
+
+  const requestDelete = (collection: keyof FleetState, id: string, label: string) => {
+    setConfirmAction({ title: `Delete ${label}?`, detail: "This permanently removes the record from this browser's local ledger.", action: () => remove(collection, id) });
   };
 
   function addVehicle(event: FormEvent<HTMLFormElement>) {
@@ -385,6 +438,7 @@ function App() {
     };
     persist({ ...state, activeVehicleId: vehicle.id, vehicles: [...state.vehicles, vehicle] });
     event.currentTarget.reset();
+    setDrawer(null);
   }
 
   function updateVehicle(vehicle: Vehicle) {
@@ -413,6 +467,7 @@ function App() {
     };
     persist({ ...state, costs: [cost, ...state.costs] });
     event.currentTarget.reset();
+    setDrawer(null);
   }
 
   function addFuel(event: FormEvent<HTMLFormElement>) {
@@ -463,6 +518,7 @@ function App() {
       vehicles: state.vehicles.map((vehicle) => vehicle.id === activeVehicle.id ? { ...vehicle, currentOdometer: Math.max(vehicle.currentOdometer, odometer) } : vehicle),
     });
     event.currentTarget.reset();
+    setDrawer(null);
   }
 
   function addTrip(event: FormEvent<HTMLFormElement>) {
@@ -482,6 +538,7 @@ function App() {
     };
     persist({ ...state, trips: [trip, ...state.trips] });
     event.currentTarget.reset();
+    setDrawer(null);
   }
 
   function addInspection(event: FormEvent<HTMLFormElement>) {
@@ -499,6 +556,7 @@ function App() {
     };
     persist({ ...state, inspections: [inspection, ...state.inspections] });
     event.currentTarget.reset();
+    setDrawer(null);
   }
 
   function addMaintenance(event: FormEvent<HTMLFormElement>) {
@@ -517,6 +575,7 @@ function App() {
     };
     persist({ ...state, maintenance: [task, ...state.maintenance] });
     event.currentTarget.reset();
+    setDrawer(null);
   }
 
   function addOdometer(event: FormEvent<HTMLFormElement>) {
@@ -538,6 +597,7 @@ function App() {
     const doc: DocumentRecord = { id: uid("doc"), vehicleId: activeVehicle.id, type: String(form.get("type") || "Document"), title: String(form.get("title") || "Document"), fileName: String(form.get("fileName") || "file.pdf"), uploadDate: today, expiryDate: String(form.get("expiryDate") || ""), notes: String(form.get("notes") || ""), reminderDays: Number(form.get("reminderDays") || 30) };
     persist({ ...state, documents: [doc, ...state.documents] });
     event.currentTarget.reset();
+    setDrawer(null);
   }
 
   function markMaintenanceDone(id: string) {
@@ -578,13 +638,15 @@ function App() {
           </div>
         </header>
 
-        <section className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-          <Kpi label="Monthly costs" value={eur.format(analytics.monthlyCost)} detail={analytics.month} />
-          <Kpi label="Km driven" value={`${km.format(analytics.vehicleKm)} km`} detail={`${km.format(analytics.fleetKm)} fleet km`} />
-          <Kpi label="Upcoming inspections" value={String(analytics.inspectionsDue.length)} detail="Due or inside reminder window" tone="amber" />
-          <Kpi label="Overdue tasks" value={String(analytics.overdue.length)} detail="Maintenance requiring action" tone={analytics.overdue.length ? "rose" : "emerald"} />
-          <Kpi label="Cost per km" value={eur2.format(analytics.vehicleCost / Math.max(analytics.vehicleKm, 1))} detail={`${eur.format(analytics.vehicleCost)} total on selected vehicle`} />
-        </section>
+        <MetricStrip
+          items={[
+            { label: "Fleet monthly cost", value: eur.format(analytics.monthlyCost), detail: pctChange(analytics.monthlyCost, analytics.priorMonthlyCost) },
+            { label: "Fleet km this month", value: `${km.format(analytics.monthlyKm)} km`, detail: pctChange(analytics.monthlyKm, analytics.priorKm) },
+            { label: "Selected cost/km", value: eur2.format(analytics.vehicleCost / Math.max(analytics.vehicleKm, 1)), detail: `${eur.format(analytics.vehicleCost)} lifetime cost` },
+            { label: "Open attention", value: String(attentionItems.length), detail: `${analytics.overdue.length} overdue maintenance` },
+            { label: "Active vehicles", value: String(state.vehicles.filter((vehicle) => !vehicle.archived && vehicle.status !== "Inactive").length), detail: `${state.vehicles.length} total profiles` },
+          ]}
+        />
 
         <section className="grid gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
           <aside className="grid gap-3 self-start">
@@ -614,7 +676,7 @@ function App() {
                   <Field label="Ownership"><SelectInput name="ownershipStatus">{ownershipTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field>
                 </div>
                 <Field label="Current odometer"><TextInput name="currentOdometer" type="number" placeholder="0" /></Field>
-                <button className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Create vehicle</button>
+                  <button className="rounded-md bg-slate-950 px-4 py-2 text-sm font-semibold text-white">Create vehicle</button>
               </form>
               </details>
             </Panel>
@@ -628,14 +690,14 @@ function App() {
           </aside>
 
           <section className="grid gap-4">
-            {view === "Dashboard" && <Dashboard analytics={analytics} state={state} activeVehicle={activeVehicle} costs={activeCosts} trips={activeTrips} inspections={activeInspections} maintenance={activeMaintenance} setView={setView} />}
-            {view === "Ledger" && <LedgerView costs={filteredCosts} query={query} setQuery={setQuery} filter={costFilter} setFilter={setCostFilter} addCost={addCost} archive={archive} remove={remove} />}
-            {view === "Trips" && <TripsView trips={activeTrips} addTrip={addTrip} archive={archive} remove={remove} />}
+            {view === "Dashboard" && <Dashboard analytics={analytics} state={state} activeVehicle={activeVehicle} costs={activeCosts} trips={activeTrips} inspections={activeInspections} maintenance={activeMaintenance} attentionItems={attentionItems} setView={setView} setDrawer={setDrawer} />}
+            {view === "Ledger" && <LedgerView costs={filteredCosts} query={query} setQuery={setQuery} filter={costFilter} setFilter={setCostFilter} addCost={addCost} archive={requestArchive} remove={requestDelete} setDrawer={setDrawer} />}
+            {view === "Trips" && <TripsView trips={activeTrips} addTrip={addTrip} archive={requestArchive} remove={requestDelete} setDrawer={setDrawer} />}
             {view === "Vehicles" && <VehiclesView state={state} setActive={(id: string) => persist({ ...state, activeVehicleId: id })} restore={(id: string) => persist({ ...state, vehicles: state.vehicles.map((vehicle) => vehicle.id === id ? { ...vehicle, archived: false, status: "Active" } : vehicle) })} />}
-            {view === "Inspections" && <InspectionsView inspections={activeInspections} addInspection={addInspection} archive={archive} remove={remove} markDone={markInspectionDone} />}
-            {view === "Maintenance" && <MaintenanceView tasks={activeMaintenance} addMaintenance={addMaintenance} archive={archive} remove={remove} markDone={markMaintenanceDone} />}
-            {view === "Fuel" && <FuelView fuel={state.fuel.filter((item) => !item.archived && item.vehicleId === activeVehicle.id)} activeVehicle={activeVehicle} addFuel={addFuel} archive={archive} remove={remove} />}
-            {view === "Documents" && <DocumentsView docs={activeDocuments} addDocument={addDocument} archive={archive} remove={remove} />}
+            {view === "Inspections" && <InspectionsView inspections={activeInspections} addInspection={addInspection} archive={requestArchive} remove={requestDelete} markDone={markInspectionDone} setDrawer={setDrawer} />}
+            {view === "Maintenance" && <MaintenanceView tasks={activeMaintenance} addMaintenance={addMaintenance} archive={requestArchive} remove={requestDelete} markDone={markMaintenanceDone} setDrawer={setDrawer} />}
+            {view === "Fuel" && <FuelView fuel={state.fuel.filter((item) => !item.archived && item.vehicleId === activeVehicle.id)} activeVehicle={activeVehicle} addFuel={addFuel} archive={requestArchive} remove={requestDelete} setDrawer={setDrawer} />}
+            {view === "Documents" && <DocumentsView docs={activeDocuments} addDocument={addDocument} archive={requestArchive} remove={requestDelete} setDrawer={setDrawer} />}
             {view === "Reports" && <AnalyticsView state={state} activeVehicle={activeVehicle} analytics={analytics} />}
             {view === "Settings" && <SettingsView state={state} onReset={() => persist(seed)} />}
           </section>
@@ -643,12 +705,28 @@ function App() {
       </div>
 
       {editingVehicle ? <VehicleEditor vehicle={editingVehicle} onClose={() => setEditingVehicle(null)} onSave={updateVehicle} /> : null}
+      {drawer ? <RecordDrawer type={drawer} activeVehicle={activeVehicle} onClose={() => setDrawer(null)} forms={{ vehicle: addVehicle, cost: addCost, fuel: addFuel, trip: addTrip, inspection: addInspection, maintenance: addMaintenance, document: addDocument }} /> : null}
+      {confirmAction ? <ConfirmDialog {...confirmAction} onClose={() => setConfirmAction(null)} /> : null}
     </main>
   );
 }
 
 function Panel({ children }: { children: React.ReactNode }) {
   return <section className="self-start rounded-xl border border-slate-200 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">{children}</section>;
+}
+
+function MetricStrip({ items }: { items: Array<{ label: string; value: string; detail: string }> }) {
+  return (
+    <section className="grid overflow-hidden rounded-xl border border-slate-200 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:grid-cols-2 xl:grid-cols-5">
+      {items.map((item) => (
+        <article key={item.label} className="border-b border-slate-100 p-3 sm:border-r xl:border-b-0 last:border-r-0">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-500">{item.label}</p>
+          <strong className="mt-1 block text-xl font-semibold text-slate-950">{item.value}</strong>
+          <span className="mt-1 block text-xs text-slate-500">{item.detail}</span>
+        </article>
+      ))}
+    </section>
+  );
 }
 
 function Kpi({ label, value, detail, tone = "slate" }: { label: string; value: string; detail: string; tone?: "slate" | "amber" | "rose" | "emerald" }) {
@@ -660,38 +738,68 @@ function Info({ label, value, wide }: { label: string; value: string; wide?: boo
   return <div className={wide ? "col-span-2" : ""}><dt className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-400">{label}</dt><dd className="mt-1 break-words font-medium text-slate-800">{value}</dd></div>;
 }
 
-function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections, maintenance, setView }: any) {
+function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections, maintenance, attentionItems, setView, setDrawer }: any) {
   const maxMonthly = Math.max(...analytics.monthlyByType.map((row: any) => row.total), 1);
   const monthFuel = costs.filter((item: CostEntry) => item.type === "Fuel" && monthOf(item.date) === analytics.month).reduce((sum: number, item: CostEntry) => sum + item.amount, 0);
   const monthMaintenance = costs.filter((item: CostEntry) => ["Maintenance", "Repairs", "Tires"].includes(item.type) && monthOf(item.date) === analytics.month).reduce((sum: number, item: CostEntry) => sum + item.amount, 0);
   const expiringDocuments = state.documents.filter((doc: DocumentRecord) => !doc.archived && doc.expiryDate && daysUntil(doc.expiryDate) <= (doc.reminderDays || 30));
   const attentionVehicles = state.vehicles.filter((vehicle: Vehicle) => !vehicle.archived && (vehicle.status === "Under repair" || daysUntil(vehicle.registrationExpiry || "2999-12-31") <= 30 || daysUntil(vehicle.insuranceExpiry || "2999-12-31") <= 30));
+  const nextMaintenance = maintenance.filter((item: MaintenanceTask) => item.status !== "Completed" && item.status !== "Skipped").sort((a: MaintenanceTask, b: MaintenanceTask) => a.nextDueKm - b.nextDueKm)[0];
+  const next30 = [
+    ...inspections.filter((item: Inspection) => daysUntil(item.dueDate) <= 30).map((item: Inspection) => ({ label: item.type, date: item.dueDate, detail: item.result || "Pending", view: "Inspections" as View })),
+    ...maintenance.filter((item: MaintenanceTask) => daysUntil(item.dueDate) <= 30 || item.status === "Overdue").map((item: MaintenanceTask) => ({ label: item.item, date: item.dueDate, detail: item.status, view: "Maintenance" as View })),
+    activeVehicle.registrationExpiry ? { label: "Registration renewal", date: activeVehicle.registrationExpiry, detail: activeVehicle.registration, view: "Vehicles" as View } : null,
+    activeVehicle.inspectionExpiry ? { label: "Inspection expiry", date: activeVehicle.inspectionExpiry, detail: activeVehicle.registration, view: "Vehicles" as View } : null,
+  ].filter(Boolean).filter((item: any) => daysUntil(item.date) <= 30).sort((a: any, b: any) => daysUntil(a.date) - daysUntil(b.date)).slice(0, 6);
+  const insights = [
+    `${eur.format(analytics.monthlyCost)} fleet spend this month (${pctChange(analytics.monthlyCost, analytics.priorMonthlyCost)}).`,
+    `${eur.format(monthFuel)} energy spend and ${eur.format(monthMaintenance)} service spend on selected vehicle.`,
+    attentionItems.length ? `${attentionItems.length} items need operator review across the fleet.` : "No urgent fleet issues are currently open.",
+  ];
   return (
     <>
       <Panel>
-        <SectionTitle eyebrow="Operations snapshot" title="Current vehicle activity" action={<div className="flex flex-wrap gap-2">{(["Ledger", "Fuel", "Trips", "Maintenance", "Inspections", "Documents"] as View[]).map((item) => <button key={item} onClick={() => setView(item)} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Add {item === "Ledger" ? "expense" : item}</button>)}</div>} />
-        <div className="grid gap-2 lg:grid-cols-4">
-          <SummaryCard label="Costs logged" value={String(costs.length)} detail={eur.format(costs.reduce((sum: number, item: CostEntry) => sum + item.amount, 0))} />
-          <SummaryCard label="Trips logged" value={String(trips.length)} detail={`${km.format(trips.reduce((sum: number, item: Trip) => sum + item.kilometers, 0))} km`} />
-          <SummaryCard label="Inspections" value={String(inspections.length)} detail={`${inspections.filter((item: Inspection) => daysUntil(item.dueDate) <= item.reminderDays).length} need attention`} />
-          <SummaryCard label="Maintenance" value={String(maintenance.length)} detail={`${maintenance.filter((item: MaintenanceTask) => item.status !== "Completed" && item.status !== "Skipped").length} open tasks`} />
+        <SectionTitle eyebrow="Selected vehicle" title={`${activeVehicle.year} ${activeVehicle.make} ${activeVehicle.model}`} action={<Badge>{activeVehicle.status || "Active"}</Badge>} />
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <Info label="Driver" value={activeVehicle.assignedDriver || "Unassigned"} />
+          <Info label="Odometer" value={`${km.format(activeVehicle.currentOdometer)} km`} />
+          <Info label="Cost/km" value={eur2.format(analytics.vehicleCost / Math.max(analytics.vehicleKm, 1))} />
+          <Info label="Next service" value={nextMaintenance ? `${nextMaintenance.item} · ${km.format(nextMaintenance.nextDueKm)} km` : "No open service"} />
+          <Info label="Insurance" value={activeVehicle.insuranceExpiry || "Missing"} />
+          <Info label="Inspection" value={activeVehicle.inspectionExpiry || "Missing"} />
         </div>
       </Panel>
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Fuel this month" value={eur.format(monthFuel)} detail="Fuel and electric charging" />
-        <SummaryCard label="Service this month" value={eur.format(monthMaintenance)} detail="Maintenance, repairs, and tires" />
-        <SummaryCard label="Expiring documents" value={String(expiringDocuments.length)} detail="Inside reminder windows" />
-        <SummaryCard label="Vehicles needing attention" value={String(attentionVehicles.length)} detail="Repair, registration, or insurance risk" />
+
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <Panel>
+          <SectionTitle eyebrow="Command center" title="Needs attention" action={<div className="flex flex-wrap gap-2">{[
+            ["cost", "Expense"],
+            ["fuel", "Fuel"],
+            ["trip", "Trip"],
+            ["maintenance", "Service"],
+            ["document", "Document"],
+          ].map(([type, label]) => <button key={type} onClick={() => setDrawer(type)} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">{label}</button>)}</div>} />
+          <div className="grid gap-2">
+            {attentionItems.length ? attentionItems.map((item: any) => <button key={`${item.title}-${item.detail}`} onClick={() => setView(item.view)} className="grid gap-1 rounded-lg border border-slate-200 bg-white p-3 text-left hover:border-teal-300 hover:bg-teal-50"><div className="flex items-center justify-between gap-3"><strong className="text-sm text-slate-950">{item.title}</strong><Badge tone={item.priority === "Critical" ? "bg-rose-50 text-rose-700 ring-rose-200" : item.priority === "Review" ? "bg-slate-100 text-slate-700 ring-slate-200" : "bg-amber-50 text-amber-700 ring-amber-200"}>{item.priority}</Badge></div><span className="text-sm text-slate-500">{item.detail}</span></button>) : <EmptyState title="No open work queue" detail="The fleet has no urgent inspection, service, or cost review items." />}
+          </div>
+        </Panel>
+        <Panel>
+          <SectionTitle eyebrow="What changed" title="This month" />
+          <div className="grid gap-2">
+            {insights.map((item) => <p key={item} className="rounded-lg bg-slate-50 p-3 text-sm leading-5 text-slate-700">{item}</p>)}
+          </div>
+        </Panel>
       </div>
+
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_330px]">
         <Panel>
           <SectionTitle eyebrow="Monthly spending" title={`${analytics.month} cost mix`} />
           {analytics.monthlyByType.length ? <div className="grid min-h-56 grid-cols-2 items-end gap-3 md:grid-cols-5 lg:grid-cols-10">{analytics.monthlyByType.map((row: any) => <div key={row.type} className="grid h-full content-end gap-2 text-center"><div className="rounded-t-md bg-teal-700" style={{ height: `${Math.max((row.total / maxMonthly) * 150, 14)}px` }} /><strong className="text-xs">{eur.format(row.total)}</strong><span className="text-[11px] text-slate-500">{row.type}</span></div>)}</div> : <EmptyState title="No spend this month" detail="Add fuel, service, insurance, tolls, or other ledger entries." />}
         </Panel>
         <Panel>
-          <SectionTitle eyebrow="Fleet list" title="Vehicles" />
+          <SectionTitle eyebrow="Next 30 days" title="Upcoming work" />
           <div className="grid gap-2">
-            {state.vehicles.filter((vehicle: Vehicle) => !vehicle.archived).map((vehicle: Vehicle) => <article key={vehicle.id} className={`rounded-lg border p-3 ${vehicle.id === activeVehicle.id ? "border-teal-300 bg-teal-50" : "border-slate-200 bg-white"}`}><strong className="text-sm">{vehicle.year} {vehicle.make} {vehicle.model}</strong><p className="text-sm text-slate-500">{vehicle.registration} · {km.format(vehicle.currentOdometer)} km</p></article>)}
+            {next30.length ? next30.map((item: any) => <button key={`${item.label}-${item.date}`} onClick={() => setView(item.view)} className="rounded-lg border border-slate-200 bg-white p-3 text-left hover:border-teal-300"><strong className="text-sm">{item.label}</strong><p className="text-sm text-slate-500">{item.date} · {item.detail}</p></button>) : <EmptyState title="Nothing due soon" detail="No selected-vehicle tasks are due inside 30 days." />}
           </div>
         </Panel>
       </div>
@@ -703,16 +811,40 @@ function SummaryCard({ label, value, detail }: { label: string; value: string; d
   return <article className="rounded-lg border border-slate-200 bg-slate-50 p-3"><p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">{label}</p><strong className="mt-1.5 block text-xl font-bold text-slate-950">{value}</strong><span className="text-sm leading-5 text-slate-500">{detail}</span></article>;
 }
 
-function LedgerView({ costs, query, setQuery, filter, setFilter, addCost, archive, remove }: any) {
-  return <Panel><SectionTitle eyebrow="Cost ledger" title="Expenses and invoices" action={<div className="flex gap-2"><TextInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ledger" /><SelectInput value={filter} onChange={(event) => setFilter(event.target.value)}><option>All</option>{costTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></div>} /><CostForm onSubmit={addCost} /><Table headers={["Date", "Type", "Vendor", "Amount", "Odometer", "Notes", "Actions"]}>{costs.map((item: CostEntry) => <tr key={item.id}><td>{item.date}</td><td><Badge>{item.type}</Badge></td><td>{item.vendor}</td><td className="font-bold">{eur2.format(item.amount)}</td><td>{km.format(item.odometer)} km</td><td>{item.notes}</td><td><Actions onArchive={() => archive("costs", item.id)} onDelete={() => remove("costs", item.id)} /></td></tr>)}</Table>{!costs.length ? <EmptyState title="No matching costs" detail="Try a different filter or add a new expense." /> : null}</Panel>;
+function LedgerView({ costs, query, setQuery, filter, setFilter, archive, remove, setDrawer }: any) {
+  return <Panel><SectionTitle eyebrow="Cost ledger" title="Expenses and invoices" action={<div className="flex flex-wrap gap-2"><TextInput value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search ledger" /><SelectInput value={filter} onChange={(event) => setFilter(event.target.value)}><option>All</option>{costTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput><button onClick={() => setDrawer("cost")} className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">Add expense</button></div>} /><Table headers={["Date", "Type", "Vendor", "Amount", "Odometer", "Notes", "Actions"]}>{costs.map((item: CostEntry) => <tr key={item.id}><td>{item.date}</td><td><Badge>{item.type}</Badge></td><td>{item.vendor}</td><td className="text-right font-semibold">{eur2.format(item.amount)}</td><td className="text-right">{km.format(item.odometer)} km</td><td>{item.notes}</td><td><Actions onEdit={() => setDrawer("cost")} onArchive={() => archive("costs", item.id, item.vendor)} onDelete={() => remove("costs", item.id, item.vendor)} /></td></tr>)}</Table>{!costs.length ? <EmptyState title="No matching costs" detail="Try a different filter or add a new expense." /> : null}</Panel>;
 }
 
 function CostForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-  return <form onSubmit={onSubmit} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-10"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Type"><SelectInput name="type">{costTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Vendor"><TextInput name="vendor" placeholder="Supplier" /></Field><Field label="Amount"><TextInput name="amount" type="number" step="0.01" /></Field><Field label="VAT"><TextInput name="vat" type="number" step="0.01" /></Field><Field label="Invoice"><TextInput name="invoiceNumber" placeholder="INV-001" /></Field><Field label="Payment"><TextInput name="paymentMethod" placeholder="Card" /></Field><Field label="Status"><SelectInput name="status"><option>Draft</option><option>Approved</option><option>Paid</option><option>Reimbursed</option><option>Rejected</option></SelectInput></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add cost</button><Field label="Notes"><TextInput name="notes" placeholder="Details" /></Field><Field label="Receipt"><TextInput name="attachment" placeholder="receipt.pdf" /></Field><Field label="Driver"><TextInput name="driver" placeholder="Driver" /></Field></form>;
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Type"><SelectInput name="type">{costTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Vendor"><TextInput name="vendor" placeholder="Supplier" /></Field><Field label="Amount"><TextInput name="amount" type="number" step="0.01" /></Field><Field label="VAT"><TextInput name="vat" type="number" step="0.01" /></Field><Field label="Invoice"><TextInput name="invoiceNumber" placeholder="INV-001" /></Field><Field label="Payment"><TextInput name="paymentMethod" placeholder="Card" /></Field><Field label="Status"><SelectInput name="status"><option>Draft</option><option>Approved</option><option>Paid</option><option>Reimbursed</option><option>Rejected</option></SelectInput></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><Field label="Driver"><TextInput name="driver" placeholder="Driver" /></Field><Field label="Notes"><TextInput name="notes" placeholder="Details" /></Field><Field label="Receipt"><TextInput name="attachment" placeholder="receipt.pdf" /></Field><button className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white sm:col-span-2">Add cost</button></form>;
 }
 
-function TripsView({ trips, addTrip, archive, remove }: any) {
-  return <Panel><SectionTitle eyebrow="Trip log" title="Business, personal, and reimbursable travel" /><form onSubmit={addTrip} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-8"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Start"><TextInput name="start" /></Field><Field label="End"><TextInput name="end" /></Field><Field label="Purpose"><TextInput name="purpose" /></Field><Field label="Km"><TextInput name="kilometers" type="number" /></Field><Field label="Driver"><TextInput name="driver" /></Field><Field label="Rate"><TextInput name="reimbursementRate" type="number" step="0.01" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add trip</button></form><Table headers={["Date", "Route", "Purpose", "Km", "Driver", "Reimbursement", "Actions"]}>{trips.map((trip: Trip) => <tr key={trip.id}><td>{trip.date}</td><td>{trip.start} → {trip.end}</td><td>{trip.purpose}</td><td>{km.format(trip.kilometers)}</td><td>{trip.driver}</td><td>{eur2.format(trip.kilometers * trip.reimbursementRate)}</td><td><Actions onArchive={() => archive("trips", trip.id)} onDelete={() => remove("trips", trip.id)} /></td></tr>)}</Table></Panel>;
+function VehicleForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"><Field label="Make"><TextInput name="make" placeholder="Toyota" /></Field><Field label="Model"><TextInput name="model" placeholder="Hilux" /></Field><Field label="Year"><TextInput name="year" type="number" placeholder="2024" /></Field><Field label="Registration"><TextInput name="registration" placeholder="LJ AB-123" /></Field><Field label="VIN"><TextInput name="vin" placeholder="Vehicle identification number" /></Field><Field label="Current odometer"><TextInput name="currentOdometer" type="number" placeholder="0" /></Field><Field label="Fuel"><SelectInput name="fuelType">{fuelTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field><Field label="Ownership"><SelectInput name="ownershipStatus">{ownershipTypes.map((item) => <option key={item}>{item}</option>)}</SelectInput></Field><button className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white sm:col-span-2">Create vehicle</button></form>;
+}
+
+function FuelForm({ activeVehicle, onSubmit }: { activeVehicle: Vehicle; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><Field label={activeVehicle.fuelType === "Electric" ? "kWh" : "Liters"}><TextInput name="quantity" type="number" step="0.01" /></Field><Field label="Unit price"><TextInput name="pricePerUnit" type="number" step="0.01" /></Field><Field label="Total"><TextInput name="totalCost" type="number" step="0.01" /></Field><Field label="Type"><SelectInput name="fuelType" defaultValue={activeVehicle.fuelType}>{fuelTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Station"><TextInput name="station" placeholder="Vendor" /></Field><Field label="Receipt"><TextInput name="receipt" placeholder="receipt.pdf" /></Field><Field label="Full tank"><input name="fullTank" type="checkbox" className="h-9 w-5 accent-teal-700" /></Field><Field label="Notes"><TextInput name="notes" placeholder="Route, pump, charger" /></Field><button className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white sm:col-span-2">Add fuel</button></form>;
+}
+
+function TripForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Purpose"><SelectInput name="purpose"><option>Business</option><option>Personal</option><option>Commute</option><option>Delivery</option><option>Service</option><option>Other</option></SelectInput></Field><Field label="Start"><TextInput name="start" /></Field><Field label="End"><TextInput name="end" /></Field><Field label="Km"><TextInput name="kilometers" type="number" /></Field><Field label="Driver"><TextInput name="driver" /></Field><Field label="Rate"><TextInput name="reimbursementRate" type="number" step="0.01" /></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white sm:col-span-2">Add trip</button></form>;
+}
+
+function InspectionForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"><Field label="Type"><TextInput name="type" /></Field><Field label="Due"><TextInput name="dueDate" type="date" /></Field><Field label="Completed"><TextInput name="completedDate" type="date" /></Field><Field label="Result"><SelectInput name="result"><option>Passed</option><option>Conditional</option><option>Failed</option><option>Pending</option></SelectInput></Field><Field label="Certificate"><TextInput name="certificate" placeholder="file.pdf" /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={30} /></Field><button className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white sm:col-span-2">Add inspection</button></form>;
+}
+
+function MaintenanceForm({ onSubmit, activeVehicle }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void; activeVehicle: Vehicle }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"><Field label="Item"><TextInput name="item" placeholder="Oil change" /></Field><Field label="Interval km"><TextInput name="intervalKm" type="number" defaultValue={10000} /></Field><Field label="Last done"><TextInput name="lastDoneKm" type="number" defaultValue={activeVehicle.currentOdometer} /></Field><Field label="Next due"><TextInput name="nextDueKm" type="number" defaultValue={activeVehicle.currentOdometer + 10000} /></Field><Field label="Due date"><TextInput name="dueDate" type="date" defaultValue={today} /></Field><Field label="Status"><SelectInput name="status"><option>Upcoming</option><option>Due soon</option><option>Overdue</option><option>Completed</option><option>Skipped</option></SelectInput></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white sm:col-span-2">Add task</button></form>;
+}
+
+function DocumentForm({ onSubmit }: { onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return <form onSubmit={onSubmit} className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2"><Field label="Type"><SelectInput name="type"><option>Registration</option><option>Insurance</option><option>Inspection certificate</option><option>Service invoice</option><option>Fuel receipt</option><option>Warranty</option><option>Lease agreement</option><option>Tax document</option></SelectInput></Field><Field label="Title"><TextInput name="title" /></Field><Field label="File"><TextInput name="fileName" placeholder="file.pdf" /></Field><Field label="Expiry"><TextInput name="expiryDate" type="date" /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={30} /></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white sm:col-span-2">Add document</button></form>;
+}
+
+function TripsView({ trips, archive, remove, setDrawer }: any) {
+  return <Panel><SectionTitle eyebrow="Trip log" title="Business, personal, and reimbursable travel" action={<button onClick={() => setDrawer("trip")} className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">Add trip</button>} /><Table headers={["Date", "Route", "Purpose", "Km", "Driver", "Reimbursement", "Actions"]}>{trips.map((trip: Trip) => <tr key={trip.id}><td>{trip.date}</td><td>{trip.start} {"->"} {trip.end}</td><td>{trip.purpose}</td><td className="text-right">{km.format(trip.kilometers)}</td><td>{trip.driver}</td><td className="text-right">{eur2.format(trip.kilometers * trip.reimbursementRate)}</td><td><Actions onEdit={() => setDrawer("trip")} onArchive={() => archive("trips", trip.id, trip.purpose)} onDelete={() => remove("trips", trip.id, trip.purpose)} /></td></tr>)}</Table>{!trips.length ? <EmptyState title="No trips yet" detail="Add a trip to build a mileage and reimbursement history." /> : null}</Panel>;
 }
 
 function VehiclesView({ state, setActive, restore }: any) {
@@ -725,27 +857,27 @@ function VehiclesView({ state, setActive, restore }: any) {
   return <Panel><SectionTitle eyebrow="Vehicle register" title="Profiles, compliance, drivers, and ownership" /><Table headers={["Vehicle", "Status", "Driver", "Cost center", "Odometer", "Insurance", "Inspection", "Total cost", "Next service", "Actions"]}>{rows.map((row: any) => <tr key={row.vehicle.id} className={row.vehicle.archived ? "opacity-60" : ""}><td><strong>{row.vehicle.nickname || `${row.vehicle.year} ${row.vehicle.make} ${row.vehicle.model}`}</strong><p className="text-xs text-slate-500">{row.vehicle.registration} · {row.vehicle.vin}</p></td><td><div className="flex flex-wrap gap-1"><Badge>{row.vehicle.status || "Active"}</Badge><Badge>{row.vehicle.ownershipStatus}</Badge></div></td><td>{row.vehicle.assignedDriver || "Unassigned"}</td><td>{row.vehicle.department || "General"}</td><td>{km.format(row.vehicle.currentOdometer)} km</td><td>{row.vehicle.insuranceExpiry || "Missing"}</td><td>{row.vehicle.inspectionExpiry || "Missing"}</td><td className="font-bold">{eur.format(row.costs)}</td><td>{row.nextMaintenance ? `${row.nextMaintenance.item} at ${km.format(row.nextMaintenance.nextDueKm)} km` : "No schedule"}</td><td>{row.vehicle.archived ? <button onClick={() => restore(row.vehicle.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white">Restore</button> : <button onClick={() => setActive(row.vehicle.id)} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700">Open</button>}</td></tr>)}</Table></Panel>;
 }
 
-function FuelView({ fuel, activeVehicle, addFuel, archive, remove }: any) {
+function FuelView({ fuel, activeVehicle, archive, remove, setDrawer }: any) {
   const totalCost = fuel.reduce((sum: number, item: FuelEntry) => sum + item.totalCost, 0);
   const totalQuantity = fuel.reduce((sum: number, item: FuelEntry) => sum + item.quantity, 0);
   const totalDistance = fuel.reduce((sum: number, item: FuelEntry) => sum + item.distanceSinceLast, 0);
-  return <Panel><SectionTitle eyebrow="Fuel and charging" title="Consumption, fill-ups, and energy cost" /><div className="mb-4 grid gap-3 md:grid-cols-3"><SummaryCard label="Energy spend" value={eur.format(totalCost)} detail={`${fuel.length} fuel or charging sessions`} /><SummaryCard label={activeVehicle.fuelType === "Electric" ? "kWh charged" : "Liters purchased"} value={km.format(totalQuantity)} detail={activeVehicle.fuelType === "Electric" ? "Electric charging" : "Fuel quantity"} /><SummaryCard label="Average economy" value={totalDistance ? `${(totalQuantity / totalDistance * 100).toFixed(1)} ${activeVehicle.fuelType === "Electric" ? "kWh" : "L"}/100 km` : "0"} detail={`${km.format(totalDistance)} km between entries`} /></div><form onSubmit={addFuel} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-10"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><Field label={activeVehicle.fuelType === "Electric" ? "kWh" : "Liters"}><TextInput name="quantity" type="number" step="0.01" /></Field><Field label="Unit price"><TextInput name="pricePerUnit" type="number" step="0.01" /></Field><Field label="Total"><TextInput name="totalCost" type="number" step="0.01" /></Field><Field label="Type"><SelectInput name="fuelType" defaultValue={activeVehicle.fuelType}>{fuelTypes.map((type) => <option key={type}>{type}</option>)}</SelectInput></Field><Field label="Station"><TextInput name="station" placeholder="Vendor" /></Field><Field label="Receipt"><TextInput name="receipt" placeholder="receipt.pdf" /></Field><Field label="Full tank"><input name="fullTank" type="checkbox" className="h-10 w-5 accent-teal-700" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add fuel</button><Field label="Notes"><TextInput name="notes" placeholder="Route, pump, charger" /></Field></form><Table headers={["Date", "Odometer", "Quantity", "Unit price", "Total", "Vendor", "Distance", "Economy", "Cost/km", "Actions"]}>{fuel.map((item: FuelEntry) => <tr key={item.id}><td>{item.date}</td><td>{km.format(item.odometer)} km</td><td>{item.quantity.toFixed(2)} {item.fuelType === "Electric" ? "kWh" : "L"}</td><td>{eur2.format(item.pricePerUnit)}</td><td className="font-bold">{eur2.format(item.totalCost)}</td><td>{item.station}</td><td>{km.format(item.distanceSinceLast)} km</td><td>{item.economy.toFixed(1)} {item.fuelType === "Electric" ? "kWh" : "L"}/100 km</td><td>{eur2.format(item.costPerKm)}</td><td><Actions onArchive={() => archive("fuel", item.id)} onDelete={() => remove("fuel", item.id)} /></td></tr>)}</Table>{!fuel.length ? <EmptyState title="No fuel records yet" detail="Add the first fill-up or charging session to calculate efficiency." /> : null}</Panel>;
+  return <Panel><SectionTitle eyebrow="Fuel and charging" title="Consumption, fill-ups, and energy cost" action={<button onClick={() => setDrawer("fuel")} className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">Add fuel</button>} /><div className="mb-4 grid gap-3 md:grid-cols-3"><SummaryCard label="Energy spend" value={eur.format(totalCost)} detail={`${fuel.length} fuel or charging sessions`} /><SummaryCard label={activeVehicle.fuelType === "Electric" ? "kWh charged" : "Liters purchased"} value={km.format(totalQuantity)} detail={activeVehicle.fuelType === "Electric" ? "Electric charging" : "Fuel quantity"} /><SummaryCard label="Average economy" value={totalDistance ? `${(totalQuantity / totalDistance * 100).toFixed(1)} ${activeVehicle.fuelType === "Electric" ? "kWh" : "L"}/100 km` : "0"} detail={`${km.format(totalDistance)} km between entries`} /></div><Table headers={["Date", "Odometer", "Quantity", "Unit price", "Total", "Vendor", "Distance", "Economy", "Cost/km", "Actions"]}>{fuel.map((item: FuelEntry) => <tr key={item.id}><td>{item.date}</td><td className="text-right">{km.format(item.odometer)} km</td><td className="text-right">{item.quantity.toFixed(2)} {item.fuelType === "Electric" ? "kWh" : "L"}</td><td className="text-right">{eur2.format(item.pricePerUnit)}</td><td className="text-right font-semibold">{eur2.format(item.totalCost)}</td><td>{item.station}</td><td className="text-right">{km.format(item.distanceSinceLast)} km</td><td className="text-right">{item.economy.toFixed(1)} {item.fuelType === "Electric" ? "kWh" : "L"}/100 km</td><td className="text-right">{eur2.format(item.costPerKm)}</td><td><Actions onEdit={() => setDrawer("fuel")} onArchive={() => archive("fuel", item.id, item.station)} onDelete={() => remove("fuel", item.id, item.station)} /></td></tr>)}</Table>{!fuel.length ? <EmptyState title="No fuel records yet" detail="Add the first fill-up or charging session to calculate efficiency." /> : null}</Panel>;
 }
 
-function InspectionsView({ inspections, addInspection, archive, remove, markDone }: any) {
-  return <Panel><SectionTitle eyebrow="Inspection calendar" title="Due dates, certificates, and reminders" /><form onSubmit={addInspection} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-7"><Field label="Type"><TextInput name="type" /></Field><Field label="Due"><TextInput name="dueDate" type="date" /></Field><Field label="Completed"><TextInput name="completedDate" type="date" /></Field><Field label="Result"><SelectInput name="result"><option>Passed</option><option>Conditional</option><option>Failed</option><option>Pending</option></SelectInput></Field><Field label="Certificate"><TextInput name="certificate" placeholder="file.pdf" /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={30} /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add</button></form><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{inspections.map((item: Inspection) => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><strong>{item.type}</strong><Badge tone={badgeTone(daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Pending")}>{daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Pending"}</Badge></div><p className="mt-2 text-sm text-slate-500">Due {item.dueDate} · reminder {item.reminderDays} days</p><p className="text-sm text-slate-500">Certificate: {item.certificate || "Not uploaded"}</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => markDone(item.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white">Mark complete</button><Actions onArchive={() => archive("inspections", item.id)} onDelete={() => remove("inspections", item.id)} /></div></article>)}</div></Panel>;
+function InspectionsView({ inspections, archive, remove, markDone, setDrawer }: any) {
+  return <Panel><SectionTitle eyebrow="Inspection calendar" title="Due dates, certificates, and reminders" action={<button onClick={() => setDrawer("inspection")} className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">Add inspection</button>} /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{inspections.map((item: Inspection) => <article key={item.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="flex items-start justify-between gap-3"><strong>{item.type}</strong><Badge tone={badgeTone(daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Pending")}>{daysUntil(item.dueDate) < 0 ? "Expired" : item.result || "Pending"}</Badge></div><p className="mt-2 text-sm text-slate-500">Due {item.dueDate} · reminder {item.reminderDays} days</p><p className="text-sm text-slate-500">Certificate: {item.certificate || "Not uploaded"}</p><div className="mt-4 flex flex-wrap gap-2"><button onClick={() => markDone(item.id)} className="rounded-md bg-emerald-700 px-3 py-2 text-sm font-semibold text-white">Mark complete</button><Actions onEdit={() => setDrawer("inspection")} onArchive={() => archive("inspections", item.id, item.type)} onDelete={() => remove("inspections", item.id, item.type)} /></div></article>)}</div>{!inspections.length ? <EmptyState title="No inspections" detail="Add inspection and compliance records to track due dates." /> : null}</Panel>;
 }
 
-function MaintenanceView({ tasks, addMaintenance, archive, remove, markDone }: any) {
-  return <Panel><SectionTitle eyebrow="Maintenance schedule" title="Service tasks and mileage intervals" /><form onSubmit={addMaintenance} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-8"><Field label="Item"><TextInput name="item" placeholder="Oil change" /></Field><Field label="Interval km"><TextInput name="intervalKm" type="number" /></Field><Field label="Last done"><TextInput name="lastDoneKm" type="number" /></Field><Field label="Next due"><TextInput name="nextDueKm" type="number" /></Field><Field label="Due date"><TextInput name="dueDate" type="date" /></Field><Field label="Status"><SelectInput name="status"><option>Upcoming</option><option>Due soon</option><option>Overdue</option><option>Completed</option><option>Skipped</option></SelectInput></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add</button></form><Table headers={["Item", "Status", "Last done", "Next due", "Due date", "Notes", "Actions"]}>{tasks.map((task: MaintenanceTask) => <tr key={task.id}><td className="font-bold">{task.item}</td><td><Badge>{task.status}</Badge></td><td>{km.format(task.lastDoneKm)} km</td><td>{km.format(task.nextDueKm)} km</td><td>{task.dueDate}</td><td>{task.notes}</td><td><div className="flex flex-wrap gap-2"><button onClick={() => markDone(task.id)} className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-bold text-white">Complete</button><Actions onArchive={() => archive("maintenance", task.id)} onDelete={() => remove("maintenance", task.id)} /></div></td></tr>)}</Table></Panel>;
+function MaintenanceView({ tasks, archive, remove, markDone, setDrawer }: any) {
+  return <Panel><SectionTitle eyebrow="Maintenance schedule" title="Service tasks and mileage intervals" action={<button onClick={() => setDrawer("maintenance")} className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">Add service task</button>} /><Table headers={["Item", "Status", "Last done", "Next due", "Due date", "Notes", "Actions"]}>{tasks.map((task: MaintenanceTask) => <tr key={task.id}><td className="font-semibold">{task.item}</td><td><Badge>{task.status}</Badge></td><td className="text-right">{km.format(task.lastDoneKm)} km</td><td className="text-right">{km.format(task.nextDueKm)} km</td><td>{task.dueDate}</td><td>{task.notes}</td><td><div className="flex flex-wrap gap-2"><button onClick={() => markDone(task.id)} className="rounded-md bg-emerald-700 px-2.5 py-1.5 text-xs font-semibold text-white">Complete</button><Actions onEdit={() => setDrawer("maintenance")} onArchive={() => archive("maintenance", task.id, task.item)} onDelete={() => remove("maintenance", task.id, task.item)} /></div></td></tr>)}</Table>{!tasks.length ? <EmptyState title="No service tasks" detail="Add maintenance intervals to forecast upcoming work." /> : null}</Panel>;
 }
 
 function OdometerView({ points, addOdometer, remove }: any) {
   return <Panel><SectionTitle eyebrow="Odometer history" title="Mileage updates and distance calculations" /><form onSubmit={addOdometer} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-5"><Field label="Date"><TextInput name="date" type="date" defaultValue={today} /></Field><Field label="Odometer"><TextInput name="odometer" type="number" /></Field><Field label="Driver"><TextInput name="driver" /></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add update</button></form><Table headers={["Date", "Odometer", "Delta", "Driver", "Notes", "Actions"]}>{points.map((point: OdometerPoint, index: number) => <tr key={point.id}><td>{point.date}</td><td>{km.format(point.odometer)} km</td><td>{index ? `${km.format(point.odometer - points[index - 1].odometer)} km` : "Baseline"}</td><td>{point.driver}</td><td>{point.notes}</td><td><button onClick={() => remove("odometer", point.id)} className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700">Delete</button></td></tr>)}</Table></Panel>;
 }
 
-function DocumentsView({ docs, addDocument, archive, remove }: any) {
-  return <Panel><SectionTitle eyebrow="Document vault" title="Registration, insurance, invoices, inspections, warranty papers" /><form onSubmit={addDocument} className="mb-4 grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 lg:grid-cols-7"><Field label="Type"><SelectInput name="type"><option>Registration</option><option>Insurance</option><option>Inspection certificate</option><option>Service invoice</option><option>Fuel receipt</option><option>Warranty</option><option>Lease agreement</option><option>Tax document</option></SelectInput></Field><Field label="Title"><TextInput name="title" /></Field><Field label="File"><TextInput name="fileName" placeholder="file.pdf" /></Field><Field label="Expiry"><TextInput name="expiryDate" type="date" /></Field><Field label="Reminder"><TextInput name="reminderDays" type="number" defaultValue={30} /></Field><Field label="Notes"><TextInput name="notes" /></Field><button className="self-end rounded-lg bg-slate-950 px-3 py-2 text-sm font-bold text-white">Add document</button></form><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{docs.map((doc: DocumentRecord) => <article key={doc.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="mb-4 rounded-lg bg-slate-900 p-4 text-white"><span className="text-xs font-bold uppercase tracking-wide text-white/60">{doc.fileName.split(".").pop() || "doc"}</span><strong className="mt-8 block text-lg">{doc.type}</strong></div><strong>{doc.title}</strong><p className="mt-1 text-sm text-slate-500">{doc.fileName}</p><p className="text-sm text-slate-500">{doc.expiryDate ? `Expires ${doc.expiryDate}` : "No expiry"}</p><p className="text-sm text-slate-500">Uploaded {doc.uploadDate || "today"} · reminder {doc.reminderDays || 0} days</p><div className="mt-4"><Actions onArchive={() => archive("documents", doc.id)} onDelete={() => remove("documents", doc.id)} /></div></article>)}</div>{!docs.length ? <EmptyState title="No documents yet" detail="Add insurance, registration, invoices, or receipts to keep a complete vehicle file." /> : null}</Panel>;
+function DocumentsView({ docs, archive, remove, setDrawer }: any) {
+  return <Panel><SectionTitle eyebrow="Document vault" title="Registration, insurance, invoices, inspections, warranty papers" action={<button onClick={() => setDrawer("document")} className="rounded-md bg-slate-950 px-3 py-2 text-sm font-semibold text-white">Add document</button>} /><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{docs.map((doc: DocumentRecord) => <article key={doc.id} className="rounded-xl border border-slate-200 bg-white p-4"><div className="mb-4 rounded-lg bg-slate-900 p-4 text-white"><span className="text-xs font-bold uppercase tracking-wide text-white/60">{doc.fileName.split(".").pop() || "doc"}</span><strong className="mt-8 block text-lg">{doc.type}</strong></div><strong>{doc.title}</strong><p className="mt-1 text-sm text-slate-500">{doc.fileName}</p><p className="text-sm text-slate-500">{doc.expiryDate ? `Expires ${doc.expiryDate}` : "No expiry"}</p><p className="text-sm text-slate-500">Uploaded {doc.uploadDate || "today"} · reminder {doc.reminderDays || 0} days</p><div className="mt-4"><Actions onEdit={() => setDrawer("document")} onArchive={() => archive("documents", doc.id, doc.title)} onDelete={() => remove("documents", doc.id, doc.title)} /></div></article>)}</div>{!docs.length ? <EmptyState title="No documents yet" detail="Add insurance, registration, invoices, or receipts to keep a complete vehicle file." /> : null}</Panel>;
 }
 
 function SettingsView({ state, onReset }: any) {
@@ -773,8 +905,41 @@ function Table({ headers, children }: { headers: string[]; children: React.React
   return <div className="overflow-x-auto rounded-lg border border-slate-200"><table className="w-full min-w-[900px] border-collapse bg-white text-left text-sm text-slate-700"><thead className="bg-slate-50 text-[11px] uppercase tracking-[0.08em] text-slate-500"><tr>{headers.map((header) => <th key={header} className="sticky top-0 border-b border-slate-200 px-3 py-2.5 font-bold">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100 tabular-nums [&_tr:hover]:bg-slate-50 [&_td]:px-3 [&_td]:py-2.5">{children}</tbody></table></div>;
 }
 
-function Actions({ onArchive, onDelete }: { onArchive: () => void; onDelete: () => void }) {
-  return <div className="flex flex-wrap gap-2"><button onClick={onArchive} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">Archive</button><button onClick={onDelete} className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700">Delete</button></div>;
+function Actions({ onEdit, onArchive, onDelete }: { onEdit?: () => void; onArchive: () => void; onDelete: () => void }) {
+  return <div className="flex flex-wrap gap-2">{onEdit ? <button onClick={onEdit} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">Edit</button> : null}<button onClick={onArchive} className="rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700">Archive</button><button onClick={onDelete} className="rounded-md border border-rose-200 bg-rose-50 px-2.5 py-1.5 text-xs font-semibold text-rose-700">Delete</button></div>;
+}
+
+function RecordDrawer({ type, activeVehicle, onClose, forms }: { type: Exclude<DrawerType, null>; activeVehicle: Vehicle; onClose: () => void; forms: Record<Exclude<DrawerType, null>, (event: FormEvent<HTMLFormElement>) => void> }) {
+  const titles: Record<Exclude<DrawerType, null>, string> = { vehicle: "Add vehicle", cost: "Add expense", fuel: "Add fuel or charge", trip: "Add trip", inspection: "Add inspection", maintenance: "Add service task", document: "Add document" };
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/35">
+      <aside className="h-full w-full max-w-xl overflow-y-auto bg-white p-5 shadow-2xl">
+        <SectionTitle eyebrow="Record drawer" title={titles[type]} action={<button onClick={onClose} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700">Close</button>} />
+        {type === "vehicle" && <VehicleForm onSubmit={forms.vehicle} />}
+        {type === "cost" && <CostForm onSubmit={forms.cost} />}
+        {type === "fuel" && <FuelForm activeVehicle={activeVehicle} onSubmit={forms.fuel} />}
+        {type === "trip" && <TripForm onSubmit={forms.trip} />}
+        {type === "inspection" && <InspectionForm onSubmit={forms.inspection} />}
+        {type === "maintenance" && <MaintenanceForm onSubmit={forms.maintenance} activeVehicle={activeVehicle} />}
+        {type === "document" && <DocumentForm onSubmit={forms.document} />}
+      </aside>
+    </div>
+  );
+}
+
+function ConfirmDialog({ title, detail, action, onClose }: { title: string; detail: string; action: () => void; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
+      <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl">
+        <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">{detail}</p>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button>
+          <button onClick={() => { action(); onClose(); }} className="rounded-md bg-rose-700 px-3 py-2 text-sm font-semibold text-white">Confirm</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function VehicleEditor({ vehicle, onClose, onSave }: { vehicle: Vehicle; onClose: () => void; onSave: (vehicle: Vehicle) => void }) {
