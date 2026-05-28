@@ -269,11 +269,22 @@ function previousMonth(month: string) {
   return date.toISOString().slice(0, 7);
 }
 
+function addMonths(month: string, offset: number) {
+  const date = new Date(`${month}-01T00:00:00`);
+  date.setMonth(date.getMonth() + offset);
+  return date.toISOString().slice(0, 7);
+}
+
 function pctChange(current: number, previous: number) {
   if (!previous && !current) return "No change";
   if (!previous) return "New activity";
   const value = ((current - previous) / previous) * 100;
   return `${value >= 0 ? "+" : ""}${value.toFixed(0)}% vs prior month`;
+}
+
+function changePercent(current: number, previous: number) {
+  if (!previous) return current ? 100 : 0;
+  return ((current - previous) / previous) * 100;
 }
 
 function shortDate(date: string) {
@@ -691,7 +702,7 @@ function App() {
         />
 
         <section className="grid gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
-          <aside className="grid gap-3 self-start">
+          <aside className="hidden gap-3 self-start xl:grid">
             <Panel>
               <SectionTitle eyebrow="Vehicle profile" title={`${activeVehicle.year} ${activeVehicle.make} ${activeVehicle.model}`} action={<Badge>{activeVehicle.ownershipStatus}</Badge>} />
               <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -806,10 +817,40 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
   const documentPenalty = documentScore === "Complete" ? 0 : 12;
   const costPenalty = costHealth > 2 ? 18 : costHealth > 1 ? 9 : 0;
   const readinessScore = Math.max(42, 100 - openServicePenalty - compliancePenalty - documentPenalty - costPenalty);
+  const scoreBreakdown = [
+    { label: "Cost control", score: 100 - costPenalty, detail: costPenalty ? `${eur2.format(costHealth)} needs review` : `${eur2.format(costHealth)} per km`, tone: costPenalty ? "warn" : "good" },
+    { label: "Service", score: 100 - openServicePenalty, detail: nextMaintenance ? `${nextMaintenance.item} · ${nextMaintenance.status}` : "No open service", tone: openServicePenalty > 15 ? "bad" : openServicePenalty ? "warn" : "good" },
+    { label: "Compliance", score: 100 - compliancePenalty, detail: activeVehicle.inspectionExpiry || "Missing date", tone: compliancePenalty > 15 ? "bad" : compliancePenalty ? "warn" : "good" },
+    { label: "Documents", score: 100 - documentPenalty, detail: documentScore === "Complete" ? "Core documents present" : "Missing core file", tone: documentPenalty ? "warn" : "good" },
+  ];
   const selectedCostPerKm = analytics.vehicleCost / Math.max(analytics.vehicleKm, 1);
   const fleetCostPerKm = analytics.fleetCost / Math.max(analytics.fleetKm, 1);
   const fleetDelta = fleetCostPerKm ? ((selectedCostPerKm - fleetCostPerKm) / fleetCostPerKm) * 100 : 0;
   const topCategory = [...analytics.monthlyByType].sort((a: any, b: any) => b.total - a.total)[0];
+  const monthCostDelta = changePercent(analytics.monthlyCost, analytics.priorMonthlyCost);
+  const fuelDelta = changePercent(analytics.fuelSpend, analytics.priorFuelSpend);
+  const maintenanceDelta = changePercent(analytics.maintenanceSpend, analytics.priorMaintenanceSpend);
+  const anomalies = [
+    analytics.priorMonthlyCost && monthCostDelta > 25 ? { title: "Fleet spend spike", detail: `${monthCostDelta.toFixed(0)}% above ${analytics.priorMonth}`, tone: "warn" } : null,
+    analytics.priorFuelSpend && fuelDelta > 20 ? { title: "Fuel/energy increase", detail: `${fuelDelta.toFixed(0)}% above last month`, tone: "warn" } : null,
+    analytics.priorMaintenanceSpend && maintenanceDelta > 30 ? { title: "Service cost jump", detail: `${maintenanceDelta.toFixed(0)}% above last month`, tone: "bad" } : null,
+    fleetDelta > 25 ? { title: "Selected vehicle cost/km", detail: `${fleetDelta.toFixed(0)}% above fleet average`, tone: "warn" } : null,
+    topCategory && topCategory.total > analytics.monthlyCost * 0.6 ? { title: "Concentrated cost area", detail: `${topCategory.type} is ${((topCategory.total / analytics.monthlyCost) * 100).toFixed(0)}% of month spend`, tone: "warn" } : null,
+  ].filter(Boolean);
+  const monthlyHistory = [-2, -1, 0].map((offset) => {
+    const month = addMonths(analytics.month, offset);
+    const total = state.costs.filter((item: CostEntry) => !item.archived && monthOf(item.date) === month).reduce((sum: number, item: CostEntry) => sum + item.amount, 0);
+    return { month, total };
+  });
+  const baselineMonthly = Math.max(monthlyHistory.reduce((sum, item) => sum + item.total, 0) / Math.max(monthlyHistory.filter((item) => item.total > 0).length, 1), analytics.monthlyCost);
+  const upcomingMaintenanceCost = maintenance.filter((item: MaintenanceTask) => item.status !== "Completed" && item.status !== "Skipped" && (daysUntil(item.dueDate) <= 90 || item.nextDueKm - activeVehicle.currentOdometer <= 3000)).reduce((sum: number, item: MaintenanceTask) => sum + (item.partsCost || 0) + (item.laborCost || 0), 0);
+  const annualizedKnownCosts = costs.filter((item: CostEntry) => ["Insurance", "Registration", "Road tax", "Leasing"].includes(item.type)).reduce((sum: number, item: CostEntry) => sum + item.amount, 0) / 12;
+  const forecast = {
+    nextMonth: baselineMonthly + annualizedKnownCosts,
+    next90: baselineMonthly * 3 + annualizedKnownCosts * 3 + upcomingMaintenanceCost,
+    upcomingMaintenanceCost,
+    baselineMonthly,
+  };
   const intelligence = [
     {
       label: "Cost per km",
@@ -842,19 +883,16 @@ function Dashboard({ analytics, state, activeVehicle, costs, trips, inspections,
       tone: topCategory && topCategory.total > analytics.monthlyCost * 0.5 ? "warn" : "good",
     },
   ];
-  const healthItems = [
-    { label: "Cost health", value: costHealth < 1 ? "Efficient" : "Review", detail: eur2.format(costHealth), tone: costHealth < 1 ? "good" : "warn" },
-    { label: "Maintenance", value: nextMaintenance?.status || "Current", detail: nextMaintenance ? nextMaintenance.item : "No open service", tone: nextMaintenance?.status === "Overdue" ? "bad" : nextMaintenance?.status === "Due soon" ? "warn" : "good" },
-    { label: "Compliance", value: inspections.some((item: Inspection) => daysUntil(item.dueDate) < 0) ? "Expired" : "Current", detail: activeVehicle.inspectionExpiry || "Missing date", tone: inspections.some((item: Inspection) => daysUntil(item.dueDate) < 0) ? "bad" : "good" },
-    { label: "Documents", value: documentScore, detail: `${activeVehicle.registration} file`, tone: documentScore === "Complete" ? "good" : "warn" },
-    { label: "Energy", value: monthFuel ? eur.format(monthFuel) : "No spend", detail: "Current month", tone: "good" },
-  ];
   return (
     <>
       <VehicleHomeCard activeVehicle={activeVehicle} analytics={analytics} nextMaintenance={nextMaintenance} readinessScore={readinessScore} setView={setView} setDrawer={setDrawer} />
 
-      <HealthPanel items={healthItems} />
+      <ReadinessBreakdown score={readinessScore} items={scoreBreakdown} />
       <CostIntelligence insights={intelligence} />
+      <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_330px]">
+        <CostAnomalyPanel anomalies={anomalies as Array<{ title: string; detail: string; tone: string }>} />
+        <ForecastPanel forecast={forecast} />
+      </div>
 
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Panel>
@@ -1020,6 +1058,71 @@ function CostIntelligence({ insights }: { insights: Array<{ label: string; value
             <span className={`mt-2 inline-flex rounded-md border px-2 py-1 text-xs font-semibold ${toneClass[item.tone] || toneClass.good}`}>{item.detail}</span>
           </article>
         ))}
+      </div>
+    </Panel>
+  );
+}
+
+function ReadinessBreakdown({ score, items }: { score: number; items: Array<{ label: string; score: number; detail: string; tone: string }> }) {
+  const barClass: Record<string, string> = {
+    good: "bg-emerald-600",
+    warn: "bg-amber-500",
+    bad: "bg-red-600",
+  };
+
+  return (
+    <Panel>
+      <SectionTitle eyebrow="Score breakdown" title={`Why this vehicle is ${score}/100`} />
+      <div className="grid gap-3 lg:grid-cols-4">
+        {items.map((item) => (
+          <article key={item.label} className="rounded-lg border border-stone-200 bg-[#F7F1EA] p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-[#B87333]">{item.label}</p>
+                <strong className="mt-1 block text-lg text-[#2A1712]">{item.score}/100</strong>
+              </div>
+              <Badge>{item.score >= 90 ? "Strong" : item.score >= 75 ? "Watch" : "Risk"}</Badge>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-white">
+              <div className={`h-full rounded-full ${barClass[item.tone] || barClass.good}`} style={{ width: `${Math.max(8, Math.min(item.score, 100))}%` }} />
+            </div>
+            <p className="mt-2 text-sm leading-5 text-slate-500">{item.detail}</p>
+          </article>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function CostAnomalyPanel({ anomalies }: { anomalies: Array<{ title: string; detail: string; tone: string }> }) {
+  const toneClass: Record<string, string> = {
+    good: "border-emerald-200 bg-emerald-50 text-emerald-700",
+    warn: "border-amber-200 bg-amber-50 text-amber-700",
+    bad: "border-red-200 bg-red-50 text-red-700",
+  };
+
+  return (
+    <Panel>
+      <SectionTitle eyebrow="Cost intelligence" title="Anomaly watch" />
+      <div className="grid gap-2">
+        {anomalies.length ? anomalies.slice(0, 4).map((item) => (
+          <article key={item.title} className={`rounded-lg border p-3 ${toneClass[item.tone] || toneClass.warn}`}>
+            <strong className="block text-sm">{item.title}</strong>
+            <span className="mt-1 block text-sm leading-5">{item.detail}</span>
+          </article>
+        )) : <EmptyState title="No abnormal cost movement" detail="Current spend, fuel, maintenance, and cost/km are inside expected ranges." />}
+      </div>
+    </Panel>
+  );
+}
+
+function ForecastPanel({ forecast }: { forecast: { nextMonth: number; next90: number; upcomingMaintenanceCost: number; baselineMonthly: number } }) {
+  return (
+    <Panel>
+      <SectionTitle eyebrow="Forecast" title="Known ownership cost" />
+      <div className="grid gap-2">
+        <SummaryCard label="Next month" value={eur.format(forecast.nextMonth)} detail={`${eur.format(forecast.baselineMonthly)} operating baseline`} />
+        <SummaryCard label="Next 90 days" value={eur.format(forecast.next90)} detail={`${eur.format(forecast.upcomingMaintenanceCost)} scheduled service risk`} />
       </div>
     </Panel>
   );

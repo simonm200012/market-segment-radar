@@ -1,4 +1,4 @@
-const CACHE_NAME = "garage-ledger-v9";
+const CACHE_NAME = "garage-ledger-v10";
 const APP_SHELL = [
   "./",
   "./index.html",
