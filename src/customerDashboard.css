@@ -2,12 +2,79 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================================
+   Vehicle Ledger — "Refined light SaaS" design system
+   A variable-driven theming layer re-skins the whole app and
+   powers a true dark mode. Light is the default.
+   ============================================================ */
+
 :root {
-  color: #0f172a;
-  background: #f3eee8;
+  --c-canvas: #f6f7f9;
+  --c-surface: #ffffff;
+  --c-surface-2: #f8fafc;
+  --c-border: #e6e8ec;
+  --c-border-soft: #f0f2f4;
+  --c-border-strong: #d6dae0;
+
+  --c-accent: #4f46e5;
+  --c-accent-strong: #4338ca;
+  --c-accent-tint: #eef2ff;
+  --c-ring: rgba(79, 70, 229, 0.28);
+
+  --t-900: #0f172a;
+  --t-700: #334155;
+  --t-600: #475569;
+  --t-500: #64748b;
+  --t-400: #94a3b8;
+
+  --c-dark: #0f172a;
+  --c-dark-2: #0b1220;
+  --c-dark-border: #1f2937;
+  --c-dark-accent: #a5b4fc;
+
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 1px 3px rgba(15, 23, 42, 0.06), 0 10px 26px -10px rgba(15, 23, 42, 0.16);
+  --shadow-lg: 0 28px 56px -16px rgba(15, 23, 42, 0.28);
+
+  color-scheme: light;
+  color: var(--t-900);
+  background: var(--c-canvas);
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.dark-mode {
+  --c-canvas: #0a0f1a;
+  --c-surface: #111827;
+  --c-surface-2: #0f1626;
+  --c-border: #1e293b;
+  --c-border-soft: #172033;
+  --c-border-strong: #334155;
+
+  --c-accent: #6366f1;
+  --c-accent-strong: #818cf8;
+  --c-accent-tint: #1e213b;
+  --c-ring: rgba(129, 140, 248, 0.32);
+
+  --t-900: #f1f5f9;
+  --t-700: #cbd5e1;
+  --t-600: #94a3b8;
+  --t-500: #94a3b8;
+  --t-400: #64748b;
+
+  --c-dark: #0b1120;
+  --c-dark-2: #070c16;
+  --c-dark-border: #1e293b;
+  --c-dark-accent: #a5b4fc;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 10px 26px -10px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 28px 56px -16px rgba(0, 0, 0, 0.62);
+
+  color-scheme: dark;
 }
 
 * {
@@ -18,6 +85,8 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  background: var(--c-canvas);
+  color: var(--t-900);
 }
 
 button,
@@ -31,182 +100,428 @@ button {
   cursor: pointer;
 }
 
-@media (max-width: 640px) {
-  header.sticky {
-    position: static;
-    border-radius: 14px;
-    padding: 12px;
-  }
-
-  header h1 {
-    font-size: 18px;
-    line-height: 1.15;
-  }
-
-  main {
-    padding-bottom: 96px;
-  }
-
-  section {
-    scroll-margin-top: 12px;
-  }
-
-  .shadow-\[0_18px_45px_rgba\(42\,23\,18\,0\.22\)\] {
-    box-shadow: 0 12px 28px rgba(42, 23, 18, 0.16);
-  }
+::selection {
+  background: var(--c-accent);
+  color: #fff;
 }
 
-.dark-mode {
-  background: #0f0a08 !important;
-  color: #f5f5f4 !important;
+/* Refined scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--c-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--c-border-strong);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--t-400);
+  background-clip: padding-box;
 }
 
-.dark-mode section,
-.dark-mode article,
-.dark-mode table,
-.dark-mode aside > div,
-.dark-mode details,
-.dark-mode .rounded-xl,
-.dark-mode .rounded-lg {
-  border-color: #3a2922 !important;
+/* ---------- Theming layer: re-skin existing utility classes ---------- */
+
+/* surfaces */
+.bg-white {
+  background-color: var(--c-surface) !important;
+}
+[class~="bg-[#F3EEE8]"] {
+  background-color: var(--c-canvas) !important;
+}
+[class~="bg-[#F7F1EA]"],
+[class~="hover:bg-[#F7F1EA]"]:hover {
+  background-color: var(--c-surface-2) !important;
 }
 
-.dark-mode section:not([class*="bg-[#17100D]"]),
-.dark-mode article:not([class*="bg-red"]):not([class*="bg-amber"]):not([class*="bg-emerald"]),
-.dark-mode table,
-.dark-mode aside {
-  background-color: #17100d !important;
-  color: #f5f5f4 !important;
+/* accent (copper -> indigo) */
+[class~="bg-[#B87333]"] {
+  background-color: var(--c-accent) !important;
+}
+[class~="hover:bg-[#8F5526]"]:hover {
+  background-color: var(--c-accent-strong) !important;
+}
+[class~="text-[#B87333]"] {
+  color: var(--c-accent) !important;
+}
+[class~="border-[#B87333]"],
+[class~="hover:border-[#B87333]"]:hover,
+[class~="focus:border-[#B87333]"]:focus {
+  border-color: var(--c-accent) !important;
 }
 
-.dark-mode thead,
-.dark-mode form,
-.dark-mode summary,
-.dark-mode .bg-\[\#F7F1EA\] {
-  background-color: #241a16 !important;
+/* dark ink buttons -> deep slate */
+[class~="bg-[#2A1712]"] {
+  background-color: var(--t-900) !important;
+}
+[class~="hover:bg-[#120B09]"]:hover {
+  background-color: #000 !important;
+}
+.dark-mode [class~="bg-[#2A1712]"] {
+  background-color: var(--c-accent) !important;
+}
+.dark-mode [class~="hover:bg-[#120B09]"]:hover {
+  background-color: var(--c-accent-strong) !important;
+}
+[class~="text-[#2A1712]"] {
+  color: var(--t-900) !important;
 }
 
-.dark-mode .bg-white {
-  background-color: #17100d !important;
-  color: #f5f5f4 !important;
+/* text scale */
+.text-slate-900,
+.text-slate-800 {
+  color: var(--t-900) !important;
+}
+.text-slate-700 {
+  color: var(--t-700) !important;
+}
+.text-slate-600 {
+  color: var(--t-600) !important;
+}
+.text-slate-500 {
+  color: var(--t-500) !important;
+}
+.text-slate-400 {
+  color: var(--t-400) !important;
+}
+[class~="placeholder:text-slate-400"]::placeholder,
+[class~="placeholder:text-stone-400"]::placeholder {
+  color: var(--t-400) !important;
 }
 
+/* borders */
+.border-stone-200 {
+  border-color: var(--c-border) !important;
+}
+.border-stone-300 {
+  border-color: var(--c-border-strong) !important;
+}
+.border-stone-100 {
+  border-color: var(--c-border-soft) !important;
+}
+.divide-stone-100 > :not([hidden]) ~ :not([hidden]) {
+  border-color: var(--c-border-soft) !important;
+}
+
+/* rings */
+.ring-stone-200 {
+  --tw-ring-color: var(--c-border) !important;
+}
+[class~="focus:ring-stone-200"]:focus,
+[class~="focus:ring-[#B87333]/20"]:focus {
+  --tw-ring-color: var(--c-ring) !important;
+}
+
+/* shadows (soften the warm copper shadows to cool SaaS elevation) */
+[class~="shadow-[0_10px_35px_rgba(42,23,18,0.06)]"] {
+  box-shadow: var(--shadow-md) !important;
+}
+[class~="shadow-[0_1px_2px_rgba(42,23,18,0.04)]"] {
+  box-shadow: var(--shadow-sm) !important;
+}
+[class~="shadow-[0_18px_45px_rgba(42,23,18,0.22)]"],
+[class~="shadow-[0_18px_45px_rgba(42,23,18,0.26)]"],
+[class~="shadow-[0_18px_45px_rgba(42,23,18,0.28)]"] {
+  box-shadow: var(--shadow-lg) !important;
+}
+[class~="shadow-[0_14px_30px_rgba(184,115,51,0.35)]"] {
+  box-shadow: 0 14px 30px rgba(79, 70, 229, 0.35) !important;
+}
+[class~="shadow-[0_8px_18px_rgba(184,115,51,0.18)]"] {
+  box-shadow: 0 8px 18px rgba(79, 70, 229, 0.18) !important;
+}
+
+/* dark "hero" surfaces (vehicle home card, dock) -> deep slate */
+[class~="bg-[#17100D]"],
+[class~="bg-[#17100D]/95"] {
+  background-color: var(--c-dark) !important;
+}
+[class~="bg-[#120B09]"] {
+  background-color: var(--c-dark-2) !important;
+}
+[class~="bg-[#2D211C]"] {
+  background-color: rgba(255, 255, 255, 0.08) !important;
+}
+[class~="border-[#3A2922]"] {
+  border-color: var(--c-dark-border) !important;
+}
+[class~="text-[#C58B5C]"],
+[class~="text-[#D5A06F]"] {
+  color: var(--c-dark-accent) !important;
+}
+
+/* semantic tints in dark mode */
 .dark-mode .bg-red-50 {
   background-color: #3b1111 !important;
   border-color: #7f1d1d !important;
-  color: #fecaca !important;
 }
-
 .dark-mode .bg-amber-50 {
   background-color: #3a2410 !important;
   border-color: #92400e !important;
-  color: #fde68a !important;
 }
-
 .dark-mode .bg-emerald-50 {
   background-color: #062f23 !important;
   border-color: #065f46 !important;
-  color: #a7f3d0 !important;
 }
-
+.dark-mode .bg-slate-200 {
+  background-color: #1e293b !important;
+}
 .dark-mode .text-red-700 {
-  color: #fecaca !important;
+  color: #fca5a5 !important;
 }
-
 .dark-mode .text-amber-700 {
-  color: #fde68a !important;
+  color: #fcd34d !important;
 }
-
 .dark-mode .text-emerald-700 {
-  color: #a7f3d0 !important;
+  color: #6ee7b7 !important;
+}
+.dark-mode .text-slate-700.bg-slate-200,
+.dark-mode .bg-slate-200.text-slate-700 {
+  color: var(--t-700) !important;
 }
 
-.dark-mode h1,
-.dark-mode h2,
-.dark-mode strong,
-.dark-mode dd,
-.dark-mode td,
-.dark-mode summary,
-.dark-mode label {
-  color: #f5f5f4 !important;
+/* ---------- App shell ---------- */
+
+.vl-shell {
+  display: flex;
+  min-height: 100vh;
+  background: var(--c-canvas);
 }
 
-.dark-mode p,
-.dark-mode dt,
-.dark-mode th,
-.dark-mode span:not([class*="bg-"]):not([class*="text-red"]):not([class*="text-amber"]):not([class*="text-emerald"]):not([class*="text-[#"]) {
-  color: #c7b9af !important;
+.vl-sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 40;
+  height: 100vh;
+  width: 252px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 18px 14px;
+  background: var(--c-surface);
+  border-right: 1px solid var(--c-border);
 }
 
-.dark-mode input,
-.dark-mode select,
-.dark-mode textarea {
-  background-color: #241a16 !important;
-  border-color: #4a332a !important;
-  color: #f5f5f4 !important;
+.vl-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 4px 8px 16px;
+}
+.vl-brand svg {
+  height: 34px;
+  width: 34px;
+  border-radius: 9px;
+  flex: none;
+}
+.vl-brand b {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--t-900);
+  line-height: 1.1;
+}
+.vl-brand span {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t-400);
 }
 
-.dark-mode input::placeholder {
-  color: #8f8178 !important;
+.vl-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+}
+.vl-nav-label {
+  padding: 14px 10px 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--t-400);
+}
+.vl-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 11px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 550;
+  font-weight: 500;
+  color: var(--t-600);
+  text-align: left;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+.vl-nav-item:hover {
+  background: var(--c-surface-2);
+  color: var(--t-900);
+}
+.vl-nav-item.is-active {
+  background: var(--c-accent-tint);
+  color: var(--c-accent-strong);
+  font-weight: 650;
+  font-weight: 600;
+}
+.vl-nav-item svg {
+  height: 18px;
+  width: 18px;
+  flex: none;
+  color: var(--t-400);
+  transition: color 0.14s ease;
+}
+.vl-nav-item:hover svg {
+  color: var(--t-600);
+}
+.vl-nav-item.is-active svg {
+  color: var(--c-accent);
 }
 
-.dark-mode tbody tr:hover,
-.dark-mode button:hover {
-  background-color: rgba(184, 115, 51, 0.12) !important;
+.vl-sidebar-foot {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--c-border);
+  display: grid;
+  gap: 8px;
 }
 
-/* Dark mode: neutral-tone badges and copper-brown text must stay readable on
-   the dark surface (e.g. the "Watch" / "Strong" score badges). */
-.dark-mode .text-\[\#2A1712\] {
-  color: #f5f5f4 !important;
+.vl-main {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
-/* ---- Accessibility & interaction polish ---- */
+.vl-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px;
+  background: color-mix(in srgb, var(--c-surface) 82%, transparent);
+  border-bottom: 1px solid var(--c-border);
+  backdrop-filter: saturate(180%) blur(12px);
+}
 
-/* Visible focus ring for keyboard users (mouse clicks stay clean). */
+.vl-content {
+  display: grid;
+  gap: 14px;
+  padding: 18px 20px 28px;
+  max-width: 1500px;
+  width: 100%;
+}
+
+.vl-iconbtn {
+  display: inline-grid;
+  place-items: center;
+  height: 38px;
+  width: 38px;
+  flex: none;
+  border-radius: 10px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface);
+  color: var(--t-600);
+  transition: background-color 0.14s ease, color 0.14s ease, border-color 0.14s ease;
+}
+.vl-iconbtn:hover {
+  background: var(--c-surface-2);
+  color: var(--t-900);
+  border-color: var(--c-border-strong);
+}
+.vl-iconbtn svg {
+  height: 18px;
+  width: 18px;
+}
+
+.vl-bottomnav {
+  background: color-mix(in srgb, var(--c-surface) 92%, transparent);
+  border: 1px solid var(--c-border);
+}
+
+.vl-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  background: rgba(15, 23, 42, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+/* ---------- Accessibility & motion ---------- */
+
 :focus-visible {
-  outline: 2px solid #b87333;
+  outline: 2px solid var(--c-accent);
   outline-offset: 2px;
   border-radius: 6px;
 }
 
-/* Smooth, subtle transitions on interactive elements. */
 @media (prefers-reduced-motion: no-preference) {
   button,
   a,
   summary,
   input,
-  select {
-    transition: background-color 0.15s ease, color 0.15s ease,
-      border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
+  select,
+  .vl-nav-item {
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.12s ease;
   }
 }
 
-/* Horizontal section nav: scrollable without a clunky scrollbar, with a
-   gentle right-edge fade hinting that more tabs are reachable. */
 .nav-scroll {
   scrollbar-width: none;
   -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
   scroll-snap-type: x proximity;
 }
-
 .nav-scroll::-webkit-scrollbar {
   display: none;
 }
-
 .nav-scroll > button {
   scroll-snap-align: start;
 }
 
+/* ---------- Responsive shell ---------- */
+
 @media (max-width: 1023px) {
-  .nav-scroll {
-    -webkit-mask-image: linear-gradient(90deg, #000 0, #000 94%, transparent 100%);
-    mask-image: linear-gradient(90deg, #000 0, #000 94%, transparent 100%);
+  .vl-sidebar {
+    position: fixed;
+    z-index: 50;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+    box-shadow: var(--shadow-lg);
+  }
+  .vl-sidebar.is-open {
+    transform: translateX(0);
+  }
+  .vl-content {
+    padding: 14px 14px 104px;
+  }
+  .vl-topbar {
+    padding: 10px 14px;
   }
 }
 
-/* Keep the fixed mobile bottom nav clear of the iOS home indicator. */
+@media (min-width: 1024px) {
+  .vl-hide-desktop {
+    display: none !important;
+  }
+}
+
+@media (max-width: 639px) {
+  .vl-hide-mobile {
+    display: none !important;
+  }
+}
+
 @media (max-width: 1023px) {
   nav.fixed.bottom-3 {
     bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));

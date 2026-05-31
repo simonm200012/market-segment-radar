@@ -548,8 +548,36 @@ function EmptyState({ title, detail }: { title: string; detail: string }) {
   );
 }
 
+const ICONS: Record<string, React.ReactNode> = {
+  Dashboard: <><rect x="3" y="3" width="7.5" height="7.5" rx="1.6" /><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6" /><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6" /><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6" /></>,
+  Vehicles: <><path d="M3 13h18" /><path d="M5 13l1.6-5A2 2 0 0 1 8.5 6.6h7a2 2 0 0 1 1.9 1.4L19 13" /><path d="M4 13v3.4h1.6" /><path d="M20 13v3.4h-1.6" /><circle cx="7.6" cy="16.6" r="1.7" /><circle cx="16.4" cy="16.6" r="1.7" /></>,
+  Ledger: <><path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21z" /><path d="M9 8h6" /><path d="M9 12h6" /></>,
+  Trips: <><circle cx="6" cy="6" r="2.2" /><circle cx="18" cy="18" r="2.2" /><path d="M6 8.2V12a4 4 0 0 0 4 4h3.8" /></>,
+  Fuel: <><path d="M5 21V5a2 2 0 0 1 2-2h3.5a2 2 0 0 1 2 2v16" /><path d="M4 21h9.5" /><path d="M6.5 9h5.5" /><path d="M12.5 7.2l3 3v6.6a1.7 1.7 0 0 0 3.4 0V8.4l-2.2-2.2" /></>,
+  Maintenance: <><path d="M15 5.2a3.8 3.8 0 0 0-5.1 4.9L4 16v3.5h3.5l5.9-5.9A3.8 3.8 0 0 0 18.3 8.5l-2.1 2.1-2.1-2.1z" /></>,
+  Inspections: <><path d="M12 3l7 3v5c0 4.4-3 7.4-7 8.9-4-1.5-7-4.5-7-8.9V6z" /><path d="M9 12l2 2 4-4" /></>,
+  Documents: <><path d="M7 3h7l4 4v14H7z" /><path d="M14 3v4h4" /><path d="M9.5 13h5" /><path d="M9.5 16.5h5" /></>,
+  Reports: <><path d="M4 4v16h16" /><rect x="7.5" y="12" width="2.6" height="5" rx=".6" /><rect x="12.2" y="8.5" width="2.6" height="8.5" rx=".6" /><rect x="16.9" y="5.5" width="2.6" height="11.5" rx=".6" /></>,
+  Settings: <><path d="M4 7h9" /><path d="M17 7h3" /><circle cx="15" cy="7" r="2" /><path d="M4 17h3" /><path d="M11 17h9" /><circle cx="9" cy="17" r="2" /></>,
+  search: <><circle cx="11" cy="11" r="7" /><path d="M21 21l-4.3-4.3" /></>,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.4 1.4M17.6 17.6L19 19M19 5l-1.4 1.4M6.4 17.6L5 19" /></>,
+  moon: <path d="M20 14.5A8 8 0 0 1 9.5 4 7 7 0 1 0 20 14.5z" />,
+  plus: <path d="M12 5v14M5 12h14" />,
+  menu: <path d="M4 6h16M4 12h16M4 18h16" />,
+  download: <><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 21h14" /></>,
+};
+
+function Icon({ name, className }: { name: string; className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+      {ICONS[name] || ICONS.Dashboard}
+    </svg>
+  );
+}
+
 function App() {
   const [state, setState] = useState<FleetState>(loadState);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [view, setView] = useState<View>("Dashboard");
   const [query, setQuery] = useState("");
   const [costFilter, setCostFilter] = useState<CostType | "All">("All");
@@ -1157,48 +1185,62 @@ function App() {
   }
 
   return (
-    <main className={`${theme === "dark" ? "dark-mode" : ""} min-h-screen bg-[#F3EEE8] pb-24 text-slate-900 lg:pb-6`}>
-      <div className="mx-auto grid w-full max-w-[1400px] gap-3 px-3 py-3 lg:px-5">
-        <header className="sticky top-0 z-20 rounded-xl border border-[#3A2922] bg-[#17100D]/95 px-3 py-3 shadow-[0_18px_45px_rgba(42,23,18,0.22)] backdrop-blur">
-          <div className="grid gap-3 lg:grid-cols-[250px_minmax(240px,1fr)_minmax(260px,360px)_auto] lg:items-center">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C58B5C]">Performance garage</p>
-              <h1 className="text-xl font-bold tracking-tight text-white">Ownership Control Center</h1>
-            </div>
-            <SelectInput aria-label="Active vehicle" value={activeVehicle.id} onChange={(event) => persist({ ...state, activeVehicleId: event.target.value })}>
-              {state.vehicles.filter((vehicle) => !vehicle.archived).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.year} {vehicle.make} {vehicle.model} · {vehicle.registration}</option>)}
-            </SelectInput>
-            <div className="relative">
-              <input ref={searchRef} value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} onKeyDown={(event) => event.key === "Escape" && (setCommandQuery(""), event.currentTarget.blur())} onBlur={() => window.setTimeout(() => setCommandQuery(""), 150)} aria-label="Search vehicles, invoices and documents" placeholder="Search vehicles, invoices, docs…" className="h-9 w-full rounded-md border border-white/10 bg-white/10 px-3 text-sm text-white outline-none placeholder:text-stone-400 focus:border-[#B87333] focus:ring-2 focus:ring-[#B87333]/20" />
-              {commandResults.length ? (
-                <div className="absolute left-0 right-0 top-11 z-50 overflow-hidden rounded-xl border border-[#3A2922] bg-white text-slate-900 shadow-2xl">
-                  {commandResults.map((result) => (
-                    <button key={result.id} onClick={() => runCommand(result)} className="grid w-full gap-0.5 border-b border-stone-100 px-3 py-2 text-left last:border-b-0 hover:bg-[#F7F1EA]">
-                      <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#B87333]">{result.group}</span>
-                      <strong className="text-sm text-[#2A1712]">{result.label}</strong>
-                      <span className="truncate text-xs text-slate-500">{result.detail}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="rounded-md border border-white/15 px-3 py-2 text-sm font-semibold text-stone-100 hover:bg-white/10">{theme === "dark" ? "Light mode" : "Dark mode"}</button>
-              <button onClick={exportCsv} className="rounded-md bg-[#B87333] px-3 py-2 text-sm font-semibold text-white hover:bg-[#8F5526]">Export CSV</button>
-            </div>
+    <main className={`${theme === "dark" ? "dark-mode" : ""} min-h-screen bg-[#F3EEE8] text-slate-900 lg:pl-[252px]`}>
+      <aside className={`vl-sidebar ${sidebarOpen ? "is-open" : ""}`}>
+        <div className="vl-brand">
+          <img src={`${import.meta.env.BASE_URL}icons/icon.svg`} alt="" width={34} height={34} />
+          <div>
+            <b>Vehicle Ledger</b>
+            <span>Ownership control</span>
           </div>
-          <div className="mt-3">
-            <nav aria-label="Sections" className="nav-scroll flex gap-1 overflow-x-auto rounded-lg border border-white/10 bg-white/5 p-1">
-              {views.map((item) => <button key={item} onClick={() => setView(item)} aria-current={view === item ? "page" : undefined} className={`shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold ${view === item ? "bg-[#B87333] text-white shadow-sm" : "text-stone-200 hover:bg-white/10"}`}>{navLabel(item)}</button>)}
-            </nav>
+        </div>
+        <nav className="vl-nav" aria-label="Primary">
+          {views.map((item) => (
+            <button key={item} onClick={() => { setView(item); setSidebarOpen(false); }} aria-current={view === item ? "page" : undefined} className={`vl-nav-item ${view === item ? "is-active" : ""}`}>
+              <Icon name={item} />{navLabel(item)}
+            </button>
+          ))}
+        </nav>
+        <div className="vl-sidebar-foot">
+          <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="vl-nav-item">
+            <Icon name={theme === "dark" ? "sun" : "moon"} />{theme === "dark" ? "Light mode" : "Dark mode"}
+          </button>
+          <p className="px-2.5 pb-1 text-[11px] font-semibold text-slate-400">{headerNextMaintenance ? `Next: ${headerNextMaintenance.item}` : cloudStatus}</p>
+        </div>
+      </aside>
+      {sidebarOpen ? <div className="vl-overlay lg:hidden" onClick={() => setSidebarOpen(false)} aria-hidden="true" /> : null}
+
+      <header className="vl-topbar">
+        <button onClick={() => setSidebarOpen(true)} className="vl-iconbtn vl-hide-desktop" aria-label="Open navigation"><Icon name="menu" /></button>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[11px] font-bold uppercase tracking-[0.16em] text-[#B87333]">{activeVehicle.registration}</p>
+          <h1 className="truncate text-lg font-bold tracking-tight text-slate-900">{navLabel(view)}</h1>
+        </div>
+        <div className="ml-auto flex items-center gap-2">
+          <div className="relative hidden sm:block">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"><Icon name="search" className="h-4 w-4" /></span>
+            <input ref={searchRef} value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} onKeyDown={(event) => event.key === "Escape" && (setCommandQuery(""), event.currentTarget.blur())} onBlur={() => window.setTimeout(() => setCommandQuery(""), 150)} aria-label="Search vehicles, invoices and documents" placeholder="Search…  /" className="h-9 w-44 rounded-lg border border-stone-200 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:w-60 focus:border-[#B87333] focus:ring-2 focus:ring-stone-200 md:w-52" />
+            {commandResults.length ? (
+              <div className="absolute right-0 top-11 z-50 w-80 max-w-[80vw] overflow-hidden rounded-xl border border-stone-200 bg-white text-slate-900 shadow-[0_18px_45px_rgba(42,23,18,0.22)]">
+                {commandResults.map((result) => (
+                  <button key={result.id} onClick={() => runCommand(result)} className="grid w-full gap-0.5 border-b border-stone-100 px-3 py-2 text-left last:border-b-0 hover:bg-[#F7F1EA]">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#B87333]">{result.group}</span>
+                    <strong className="text-sm text-[#2A1712]">{result.label}</strong>
+                    <span className="truncate text-xs text-slate-500">{result.detail}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
-          <div className="mt-3 grid gap-2 text-xs text-stone-200 sm:grid-cols-2 lg:grid-cols-4">
-            <span className="rounded-md border border-white/10 bg-white/5 px-3 py-2"><strong className="text-[#C58B5C]">Status:</strong> {activeVehicle.status || "Active"}</span>
-            <span className="rounded-md border border-white/10 bg-white/5 px-3 py-2"><strong className="text-[#C58B5C]">Driver:</strong> {activeVehicle.assignedDriver || "Unassigned"}</span>
-            <span className="rounded-md border border-white/10 bg-white/5 px-3 py-2"><strong className="text-[#C58B5C]">Odometer:</strong> {km.format(activeVehicle.currentOdometer)} km</span>
-            <span className="rounded-md border border-white/10 bg-white/5 px-3 py-2"><strong className="text-[#C58B5C]">Next service:</strong> {headerNextMaintenance ? `${headerNextMaintenance.item} at ${km.format(headerNextMaintenance.nextDueKm)} km` : "No open service"}</span>
-          </div>
-        </header>
+          <select aria-label="Active vehicle" value={activeVehicle.id} onChange={(event) => persist({ ...state, activeVehicleId: event.target.value })} className="h-9 w-[132px] truncate rounded-lg border border-stone-200 bg-white px-2.5 text-sm font-medium text-slate-900 outline-none transition focus:border-[#B87333] focus:ring-2 focus:ring-stone-200 sm:w-[184px]">
+            {state.vehicles.filter((vehicle) => !vehicle.archived).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.make} {vehicle.model} · {vehicle.registration}</option>)}
+          </select>
+          <button onClick={exportCsv} className="vl-iconbtn vl-hide-mobile" aria-label="Export CSV" title="Export CSV"><Icon name="download" /></button>
+          <button onClick={() => setDrawer("cost")} className="inline-flex items-center gap-1.5 rounded-lg bg-[#B87333] px-3 py-2 text-sm font-semibold text-white hover:bg-[#8F5526]"><Icon name="plus" className="h-4 w-4" /><span className="hidden sm:inline">Add</span></button>
+        </div>
+      </header>
+
+      <div className="vl-content">
 
         <MetricStrip
           items={[
@@ -1210,8 +1252,9 @@ function App() {
           ]}
         />
 
-        <section className="grid gap-3 xl:grid-cols-[300px_minmax(0,1fr)]">
-          <aside className="hidden gap-3 self-start xl:grid">
+        <section className={`grid gap-3.5 xl:items-start ${view === "Dashboard" ? "xl:grid-cols-[minmax(0,1fr)_312px]" : ""}`}>
+          {view === "Dashboard" ? (
+          <aside className="hidden gap-3.5 self-start xl:order-2 xl:grid">
             <Panel>
               <SectionTitle eyebrow="Vehicle profile" title={`${activeVehicle.year} ${activeVehicle.make} ${activeVehicle.model}`} action={<Badge>{activeVehicle.ownershipStatus}</Badge>} />
               <dl className="grid grid-cols-2 gap-3 text-sm">
@@ -1250,8 +1293,9 @@ function App() {
               </div>
             </Panel>
           </aside>
+          ) : null}
 
-          <section className="grid gap-4">
+          <section className="grid gap-4 min-w-0">
             {view === "Dashboard" && <Dashboard analytics={analytics} state={state} activeVehicle={activeVehicle} costs={activeCosts} trips={activeTrips} inspections={activeInspections} maintenance={activeMaintenance} attentionItems={attentionItems} setView={setView} setDrawer={openDrawer} />}
             {view === "VehicleDetail" && <VehicleDetailView state={state} activeVehicle={activeVehicle} costs={activeCosts} trips={activeTrips} inspections={activeInspections} maintenance={activeMaintenance} documents={activeDocuments} setView={setView} setEditingVehicle={setEditingVehicle} editRecord={openEdit} />}
             {view === "Ledger" && <LedgerView costs={filteredCosts} query={query} setQuery={setQuery} filter={costFilter} setFilter={setCostFilter} archive={requestArchive} remove={requestDelete} setDrawer={openDrawer} editRecord={openEdit} />}
@@ -1282,12 +1326,12 @@ function Panel({ children }: { children: React.ReactNode }) {
 
 function MetricStrip({ items }: { items: Array<{ label: string; value: string; detail: string }> }) {
   return (
-    <section className="grid overflow-hidden rounded-xl border border-stone-200 bg-white shadow-[0_10px_35px_rgba(42,23,18,0.06)] sm:grid-cols-2 xl:grid-cols-5">
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
       {items.map((item) => (
-        <article key={item.label} className="border-b border-stone-100 p-3 sm:border-r xl:border-b-0 last:border-r-0">
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-[#B87333]">{item.label}</p>
-          <strong className="mt-1 block text-xl font-semibold text-[#2A1712]">{item.value}</strong>
-          <span className="mt-1 block text-xs text-slate-500">{item.detail}</span>
+        <article key={item.label} className="rounded-xl border border-stone-200 bg-white p-4 shadow-[0_1px_2px_rgba(42,23,18,0.04)]">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">{item.label}</p>
+          <strong className="mt-2 block text-2xl font-bold tracking-tight text-[#2A1712]">{item.value}</strong>
+          <span className="mt-1 block truncate text-xs text-slate-500" title={item.detail}>{item.detail}</span>
         </article>
       ))}
     </section>
@@ -1802,9 +1846,9 @@ function QuickAddDock({ open, setOpen, setDrawer }: { open: boolean; setOpen: (v
   return (
     <div className="fixed bottom-24 right-4 z-40 grid justify-items-end gap-2 lg:bottom-6">
       {open ? (
-        <div className="grid gap-1 rounded-xl border border-[#3A2922] bg-[#17100D] p-2 shadow-[0_18px_45px_rgba(42,23,18,0.26)]">
+        <div className="grid w-44 gap-0.5 rounded-xl border border-stone-200 bg-white p-1.5 shadow-[0_18px_45px_rgba(42,23,18,0.26)]">
           {actions.map(([type, label]) => (
-            <button key={type} onClick={() => { setDrawer(type); setOpen(false); }} className="rounded-md px-3 py-2 text-left text-sm font-semibold text-stone-100 hover:bg-white/10">
+            <button key={type} onClick={() => { setDrawer(type); setOpen(false); }} className="rounded-lg px-3 py-2 text-left text-sm font-semibold text-slate-700 hover:bg-[#F7F1EA]">
               {label}
             </button>
           ))}
@@ -1820,10 +1864,11 @@ function QuickAddDock({ open, setOpen, setDrawer }: { open: boolean; setOpen: (v
 function MobileBottomNav({ view, setView, setDrawer }: { view: View; setView: (view: View) => void; setDrawer: (type: DrawerType) => void }) {
   const items: Array<[View | "Add", string]> = [["Dashboard", "Home"], ["Ledger", "Ledger"], ["Add", "Add"], ["Maintenance", "Service"], ["Documents", "Docs"]];
   return (
-    <nav className="fixed inset-x-3 bottom-3 z-30 grid grid-cols-5 rounded-2xl border border-[#3A2922] bg-[#17100D]/95 p-1 shadow-[0_18px_45px_rgba(42,23,18,0.28)] backdrop-blur lg:hidden">
+    <nav className="vl-bottomnav fixed inset-x-3 bottom-3 z-30 grid grid-cols-5 gap-1 rounded-2xl p-1.5 shadow-[0_18px_45px_rgba(42,23,18,0.28)] backdrop-blur lg:hidden">
       {items.map(([target, label]) => (
-        <button key={target} onClick={() => target === "Add" ? setDrawer("cost") : setView(target)} aria-current={view === target ? "page" : undefined} aria-label={target === "Add" ? "Add expense" : label} className={`rounded-xl px-2 py-2 text-xs font-semibold ${view === target ? "bg-[#B87333] text-white" : target === "Add" ? "text-[#D5A06F]" : "text-stone-200"}`}>
-          {target === "Add" ? "+" : label}
+        <button key={target} onClick={() => target === "Add" ? setDrawer("cost") : setView(target)} aria-current={view === target ? "page" : undefined} aria-label={target === "Add" ? "Add expense" : label} className={`flex flex-col items-center gap-0.5 rounded-xl px-2 py-1.5 text-[11px] font-semibold ${view === target ? "bg-[#B87333] text-white" : target === "Add" ? "text-[#B87333]" : "text-slate-500"}`}>
+          <Icon name={target === "Add" ? "plus" : target} className="h-5 w-5" />
+          <span>{target === "Add" ? "Add" : label}</span>
         </button>
       ))}
     </nav>
