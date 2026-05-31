@@ -1,23 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Garage Ledger">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Vehicle Ledger">
   <defs>
     <linearGradient id="bg" x1="88" x2="424" y1="56" y2="456" gradientUnits="userSpaceOnUse">
       <stop stop-color="#2A1712"/>
       <stop offset="1" stop-color="#120B09"/>
     </linearGradient>
-    <linearGradient id="copper" x1="144" x2="382" y1="112" y2="388" gradientUnits="userSpaceOnUse">
+    <linearGradient id="copper" x1="150" x2="380" y1="150" y2="400" gradientUnits="userSpaceOnUse">
       <stop stop-color="#D5A06F"/>
-      <stop offset=".45" stop-color="#B87333"/>
+      <stop offset=".5" stop-color="#B87333"/>
       <stop offset="1" stop-color="#8F5526"/>
     </linearGradient>
   </defs>
   <rect width="512" height="512" rx="108" fill="url(#bg)"/>
-  <path d="M118 126c0-18 14-32 32-32h212c18 0 32 14 32 32v260c0 18-14 32-32 32H150c-18 0-32-14-32-32V126Z" fill="#F7F1EA"/>
-  <path d="M156 154h138M156 190h200M156 226h174" stroke="#2A1712" stroke-width="18" stroke-linecap="round" opacity=".22"/>
-  <path d="M152 318c18-41 58-68 104-68s86 27 104 68" fill="none" stroke="url(#copper)" stroke-width="34" stroke-linecap="round"/>
-  <path d="M170 325h172c15 0 27 12 27 27v22H143v-22c0-15 12-27 27-27Z" fill="#2A1712"/>
-  <circle cx="190" cy="374" r="20" fill="url(#copper)"/>
-  <circle cx="322" cy="374" r="20" fill="url(#copper)"/>
-  <path d="M180 302h152" stroke="#F7F1EA" stroke-width="16" stroke-linecap="round"/>
-  <path d="M402 101l30 30-30 30-30-30 30-30Z" fill="url(#copper)"/>
-  <path d="M249 110h34v112h-34V110Zm-54 0h88v32h-52v42h46v32h-82V110Z" fill="#2A1712"/>
+  <g fill="none" stroke-linecap="round">
+    <path d="M166.5 403.8 A156 156 0 1 1 345.5 403.8" stroke="#F7F1EA" stroke-opacity=".16" stroke-width="30"/>
+    <path d="M166.5 403.8 A156 156 0 1 1 366.3 165.7" stroke="url(#copper)" stroke-width="30"/>
+    <path d="M227.7 304.3 L340.85 191.15" stroke="#F7F1EA" stroke-width="22"/>
+  </g>
+  <circle cx="256" cy="276" r="34" fill="url(#copper)"/>
+  <circle cx="256" cy="276" r="14" fill="#F7F1EA"/>
 </svg>
