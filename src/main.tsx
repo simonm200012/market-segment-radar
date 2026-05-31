@@ -562,6 +562,7 @@ function App() {
   const [commandQuery, setCommandQuery] = useState("");
   const [cloudStatus, setCloudStatus] = useState(cloudConfigured ? "Cloud connecting..." : "Local backup");
   const saveTimer = useRef<number | null>(null);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   const persist = (next: FleetState) => {
     setState(next);
@@ -629,6 +630,19 @@ function App() {
       cancelled = true;
       if (saveTimer.current) window.clearTimeout(saveTimer.current);
     };
+  }, []);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const typing = target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "TEXTAREA" || target.isContentEditable);
+      if (event.key === "/" && !typing) {
+        event.preventDefault();
+        searchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
   }, []);
 
   const setTheme = (next: "light" | "dark") => {
@@ -1151,11 +1165,11 @@ function App() {
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#C58B5C]">Performance garage</p>
               <h1 className="text-xl font-bold tracking-tight text-white">Ownership Control Center</h1>
             </div>
-            <SelectInput value={activeVehicle.id} onChange={(event) => persist({ ...state, activeVehicleId: event.target.value })}>
+            <SelectInput aria-label="Active vehicle" value={activeVehicle.id} onChange={(event) => persist({ ...state, activeVehicleId: event.target.value })}>
               {state.vehicles.filter((vehicle) => !vehicle.archived).map((vehicle) => <option key={vehicle.id} value={vehicle.id}>{vehicle.year} {vehicle.make} {vehicle.model} · {vehicle.registration}</option>)}
             </SelectInput>
             <div className="relative">
-              <input value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} onBlur={() => window.setTimeout(() => setCommandQuery(""), 150)} placeholder="Search vehicles, invoices, docs..." className="h-9 w-full rounded-md border border-white/10 bg-white/10 px-3 text-sm text-white outline-none placeholder:text-stone-400 focus:border-[#B87333] focus:ring-2 focus:ring-[#B87333]/20" />
+              <input ref={searchRef} value={commandQuery} onChange={(event) => setCommandQuery(event.target.value)} onKeyDown={(event) => event.key === "Escape" && (setCommandQuery(""), event.currentTarget.blur())} onBlur={() => window.setTimeout(() => setCommandQuery(""), 150)} aria-label="Search vehicles, invoices and documents" placeholder="Search vehicles, invoices, docs…" className="h-9 w-full rounded-md border border-white/10 bg-white/10 px-3 text-sm text-white outline-none placeholder:text-stone-400 focus:border-[#B87333] focus:ring-2 focus:ring-[#B87333]/20" />
               {commandResults.length ? (
                 <div className="absolute left-0 right-0 top-11 z-50 overflow-hidden rounded-xl border border-[#3A2922] bg-white text-slate-900 shadow-2xl">
                   {commandResults.map((result) => (
@@ -1174,8 +1188,8 @@ function App() {
             </div>
           </div>
           <div className="mt-3">
-            <nav className="flex gap-1 overflow-x-auto rounded-lg border border-white/10 bg-white/5 p-1">
-              {views.map((item) => <button key={item} onClick={() => setView(item)} className={`shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold ${view === item ? "bg-[#B87333] text-white shadow-sm" : "text-stone-200 hover:bg-white/10"}`}>{navLabel(item)}</button>)}
+            <nav aria-label="Sections" className="nav-scroll flex gap-1 overflow-x-auto rounded-lg border border-white/10 bg-white/5 p-1">
+              {views.map((item) => <button key={item} onClick={() => setView(item)} aria-current={view === item ? "page" : undefined} className={`shrink-0 rounded-md px-2.5 py-1.5 text-xs font-semibold ${view === item ? "bg-[#B87333] text-white shadow-sm" : "text-stone-200 hover:bg-white/10"}`}>{navLabel(item)}</button>)}
             </nav>
           </div>
           <div className="mt-3 grid gap-2 text-xs text-stone-200 sm:grid-cols-2 lg:grid-cols-4">
@@ -1808,7 +1822,7 @@ function MobileBottomNav({ view, setView, setDrawer }: { view: View; setView: (v
   return (
     <nav className="fixed inset-x-3 bottom-3 z-30 grid grid-cols-5 rounded-2xl border border-[#3A2922] bg-[#17100D]/95 p-1 shadow-[0_18px_45px_rgba(42,23,18,0.28)] backdrop-blur lg:hidden">
       {items.map(([target, label]) => (
-        <button key={target} onClick={() => target === "Add" ? setDrawer("cost") : setView(target)} className={`rounded-xl px-2 py-2 text-xs font-semibold ${view === target ? "bg-[#B87333] text-white" : target === "Add" ? "text-[#D5A06F]" : "text-stone-200"}`}>
+        <button key={target} onClick={() => target === "Add" ? setDrawer("cost") : setView(target)} aria-current={view === target ? "page" : undefined} aria-label={target === "Add" ? "Add expense" : label} className={`rounded-xl px-2 py-2 text-xs font-semibold ${view === target ? "bg-[#B87333] text-white" : target === "Add" ? "text-[#D5A06F]" : "text-stone-200"}`}>
           {target === "Add" ? "+" : label}
         </button>
       ))}
@@ -1862,4 +1876,6 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
   });
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+const container = document.getElementById("root")! as HTMLElement & { __root?: ReturnType<typeof createRoot> };
+const root = container.__root ?? (container.__root = createRoot(container));
+root.render(<App />);
